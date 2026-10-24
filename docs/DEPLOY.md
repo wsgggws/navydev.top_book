@@ -132,7 +132,8 @@ server {
 **终端端用 `reader` 就够了** —— 它只是读书和记下自己读到哪。
 
 ```bash
-# 终端
+# 终端（它在自己的项目目录里，只需要 textual 一个依赖）
+cd terminal && uv sync
 LECTOR_URL=https://reader.example.com LECTOR_TOKEN=你的令牌:reader uv run lector
 ```
 

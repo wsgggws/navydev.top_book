@@ -55,8 +55,8 @@ Cursor = { book_id, chapter_id, sentence_id, word_index }
 ## 3. 目录结构（按此落地）
 
 ```
-pyproject.toml       # uv 项目定义：依赖的唯一事实来源
-uv.lock              # 锁定的依赖解析结果
+pyproject.toml       # 服务端项目：依赖的事实来源
+uv.lock              # 服务端的锁
 lector/
   __init__.py
   config.py          # 配置：路径、端口、TTS 引擎、访问令牌

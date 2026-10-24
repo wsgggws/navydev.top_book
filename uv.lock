@@ -452,13 +452,13 @@ dependencies = [
     { name = "fastapi" },
     { name = "pydantic" },
     { name = "python-multipart" },
-    { name = "textual" },
     { name = "uvicorn" },
 ]
 
 [package.dev-dependencies]
 dev = [
     { name = "httpx" },
+    { name = "lector-tui" },
     { name = "pytest" },
 ]
 
@@ -468,15 +468,29 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
     { name = "pydantic", specifier = ">=2.7" },
     { name = "python-multipart", specifier = ">=0.0.9" },
-    { name = "textual", specifier = ">=0.80" },
     { name = "uvicorn", specifier = ">=0.30" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "httpx", specifier = ">=0.27" },
+    { name = "lector-tui", directory = "terminal" },
     { name = "pytest", specifier = ">=8.0" },
 ]
+
+[[package]]
+name = "lector-tui"
+version = "1.0.0"
+source = { directory = "terminal" }
+dependencies = [
+    { name = "textual" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "textual", specifier = ">=0.80" }]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8.0" }]
 
 [[package]]
 name = "linkify-it-py"

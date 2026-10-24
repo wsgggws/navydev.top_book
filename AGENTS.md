@@ -21,21 +21,31 @@
 
 环境与依赖一律用 **uv** 管理，不要手工建 venv、也不要手工 pip install。
 
-```bash
-# 安装：uv 自己准备 .venv 与 Python 版本（见 .python-version）
-uv sync
+仓库里有**两个互不干扰的项目**：
 
-# 开发服务器
+| 项目 | 位置 | 装什么 | 跑什么 |
+| --- | --- | --- | --- |
+| 服务端（含网页端） | 仓库根 | `uv sync` | `uv run lector-server` |
+| 终端端 | `terminal/` | `cd terminal && uv sync` | `cd terminal && uv run lector` |
+
+终端端只通过 HTTP 与服务端打交道，不依赖服务端的任何代码；服务端也不知道
+终端端的存在。两个项目各有自己的 `pyproject.toml` 与 `uv.lock`，可以分别安装、
+分别发版，谁也不牵动谁。
+
+```bash
+# 服务端
+uv sync
 uv run lector-server                              # 默认 127.0.0.1:8000
 uv run uvicorn lector.web:app --reload --port 8000
-
-# 终端端
-uv run lector
-
-# 测试
 uv run pytest -q                    # 全量
 uv run pytest -q tests/test_epub.py # 单文件
 uv run pytest -q -k sentence        # 按名字过滤
+
+# 终端端（在它自己的目录里）
+cd terminal
+uv sync
+uv run lector
+uv run pytest -q
 
 # 端到端冒烟
 curl -s localhost:8000/api/v1/health | jq .
@@ -44,15 +54,15 @@ curl -s localhost:8000/api/v1/health | jq .
 以上都有对应的 make 目标（`make help` 看全部）：
 
 ```bash
-make test            # uv run pytest -q
+make test            # 两个项目的测试都跑
 make server          # uv run lector-server
 make dev             # 带热重载的服务端
-make terminal        # uv run lector
+make terminal        # 终端端
 make book books/my.epub     # 造一本书（或把已有的 EPUB 收进书架）
 make import books/my.epub   # 把已有的 EPUB 送进服务端
 ```
 
-- `pyproject.toml` 是依赖的**唯一事实来源**；`uv.lock` 是锁定的解析结果，两者都要提交。
+- 每个项目各有自己的 `pyproject.toml` 与 `uv.lock`，都是该项目的依赖事实来源，都要提交。
 - `requirements.txt` 是由 `uv export --format requirements-txt --no-hashes --no-emit-project --output-file requirements.txt` 生成的产物，**不要手工编辑**。只在需要 pip 环境时用它。
 - 改依赖用 `uv add <包>` / `uv remove <包>`，不要手写 `pyproject.toml` 里的版本号。
 - 新增运行时依赖仍要遵守下面的依赖白名单。

@@ -1,4 +1,7 @@
-"""The terminal client's own settings."""
+"""The terminal client's own settings.
+
+These tests need no server: the terminal project stands on its own.
+"""
 
 from __future__ import annotations
 

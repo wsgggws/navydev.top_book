@@ -330,3 +330,52 @@ def test_the_terminal_does_not_change_the_shelf(server, epub2_bytes: bytes):
             assert not app.screen.query("#upload-input")
 
     asyncio.run(scenario())
+
+
+def test_the_shelf_moves_with_jk(server, epub2_bytes: bytes):
+    """书架上 j/k 能上下移动，l 进入。"""
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "terminal"))
+    from lector_tui.app import LectorApp
+
+    import httpx
+
+    import sys as _sys
+    from pathlib import Path as _Path
+
+    _sys.path.insert(0, str(_Path(__file__).resolve().parent))
+    from factories import build_epub2
+
+    # 两本不同的书，书架上才有得上下移动。
+    for title in ("甲书", "乙书"):
+        httpx.post(
+            f"{server}/api/v1/books",
+            files={
+                "file": (
+                    f"{title}.epub",
+                    build_epub2(title=title),
+                    "application/epub+zip",
+                )
+            },
+        )
+
+    async def scenario():
+        app = LectorApp(base_url=server)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            listing = app.screen.query_one("#library-list")
+            assert listing.index == 0
+            await pilot.press("j")
+            await pilot.pause()
+            assert listing.index == 1
+            await pilot.press("k")
+            await pilot.pause()
+            assert listing.index == 0
+            # l 进入书里
+            await pilot.press("l")
+            await pilot.pause()
+            assert app.screen.__class__.__name__ == "ReaderScreen"
+
+    asyncio.run(scenario())

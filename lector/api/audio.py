@@ -135,6 +135,9 @@ async def warm_audio(
                 (book_id,),
             )
         ]
+    if payload.limit:
+        # 一次只预热一小段，客户端可以在后台接着叫下一段。
+        sentence_ids = sentence_ids[: payload.limit]
     ready = 0
     failed = 0
     for sentence_id in sentence_ids:

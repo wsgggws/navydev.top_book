@@ -10,7 +10,9 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
 from textual.screen import Screen
-from textual.widgets import Footer, Input, Label, ListItem, ListView, Static
+from textual.widgets import Footer, Input, Label, ListItem, Static
+
+from lector_tui.widgets import VimListView
 
 from lector_tui.screens.reader import ReaderScreen
 
@@ -34,7 +36,7 @@ class LibraryScreen(Screen):
         with Vertical():
             yield Static("  Lector  书架", id="shelf-title")
             yield Static("", id="shelf-server")
-            yield ListView(id="library-list")
+            yield VimListView(id="library-list")
             yield Input(placeholder="服务器地址，例如 https://reader.example.com", id="connect-url")
             yield Input(placeholder="访问令牌（没有就留空）", id="connect-token")
             yield Footer()
@@ -52,7 +54,7 @@ class LibraryScreen(Screen):
     # -- data ------------------------------------------------------------
     def refresh_books(self) -> None:
         """Reload the shelf from the server."""
-        listing = self.query_one("#library-list")
+        listing = self.query_one("#library-list", VimListView)
         listing.clear()
         try:
             self._books = self.app.api.list_books()
@@ -75,7 +77,7 @@ class LibraryScreen(Screen):
     # -- actions ---------------------------------------------------------
     def action_open(self) -> None:
         """Open the selected book."""
-        listing = self.query_one("#library-list")
+        listing = self.query_one("#library-list", VimListView)
         index = listing.index
         if index is None or index >= len(self._books):
             return

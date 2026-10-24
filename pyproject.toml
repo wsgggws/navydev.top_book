@@ -2,7 +2,7 @@
 name = "lector"
 # 与 lector/config.py 的 APP_VERSION 保持一致。
 version = "1.0.0"
-description = "EPUB 阅读器 + 有声书播放器：网页端与终端端共享同一份内容与同一个阅读位置"
+description = "EPUB 阅读器 + 有声书播放器的服务端：解析、合成、HTTP 接口，以及网页端的前端资源"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -10,18 +10,19 @@ dependencies = [
     "uvicorn>=0.30",
     "pydantic>=2.7",
     "edge-tts>=7.0",
-    "textual>=0.80",
     "python-multipart>=0.0.9",
 ]
 
 [project.scripts]
 lector-server = "lector.web:main"
-lector = "lector_tui.__main__:main"
 
 [dependency-groups]
 dev = [
     "pytest>=8.0",
     "httpx>=0.27",
+    # 终端端是独立项目（terminal/），这里只在开发期引入，好让终端的
+    # 集成测试能在服务端旁边跑起来。运行时两者互不依赖。
+    "lector-tui @ file:///${PROJECT_ROOT}/terminal",
 ]
 
 [build-system]
@@ -30,8 +31,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-# 两个顶层包：服务端与终端端。
-packages = ["lector", "terminal/lector_tui"]
+# 服务端一个包；终端端在 terminal/，是另一个项目。
+packages = ["lector"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

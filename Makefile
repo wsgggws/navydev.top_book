@@ -39,14 +39,15 @@ books/%.epub:
 	   echo "make: 未知目标 '$@'（make help 看可用目标）"; \
 	 fi
 
-test:  ## 跑测试
+test:  ## 跑测试（服务端 + 终端端）
 	@$(UV) run pytest -q
+	@cd terminal && $(UV) run pytest -q
 
 server:  ## 起服务端
 	@$(UV) run lector-server
 
-terminal:  ## 起终端端
-	@$(UV) run lector
+terminal:  ## 起终端端（在 terminal/ 这个独立项目里）
+	@cd terminal && $(UV) run lector
 
 dev:  ## 起带热重载的服务端
 	@$(UV) run uvicorn lector.web:app --reload --port 8000

@@ -197,6 +197,7 @@ class WarmRequest(BaseModel):
     chapter_id: str | None = None
     voice_id: str | None = None
     rate: str = "+0%"
+    limit: int | None = Field(None, ge=1, description="一次最多预热多少句")
 
 
 class WarmResponse(BaseModel):

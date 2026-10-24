@@ -17,6 +17,8 @@ from textual.screen import Screen
 from textual.events import Key
 from textual.widgets import Footer, Input, ListItem, ListView, Static
 
+from lector_tui.widgets import VimListView
+
 #: How many columns the directory takes.
 TOC_WIDTH = 30
 
@@ -250,7 +252,7 @@ class BaseReaderScreen(Screen):
     def compose(self) -> ComposeResult:
         with Vertical():
             with Horizontal(id="reader-body"):
-                yield ListView(id="toc-pane")
+                yield VimListView(id="toc-pane")
                 with Vertical(id="text-area"):
                     yield VerticalScroll(ChapterText(), id="text-pane")
             yield Input(placeholder="搜索全书…（回车确认，Esc 取消）", id="search-input")
@@ -259,6 +261,9 @@ class BaseReaderScreen(Screen):
 
     def on_mount(self) -> None:
         self.query_one("#search-input").display = False
+        # 焦点默认在正文：h/j/k/l 是读的时候最常用的键。
+        # 按 Tab 切到目录，目录里 j/k/l 才是目录自己的键。
+        self.query_one("#text-pane", VerticalScroll).focus()
         self.load_book()
 
     # -- data ------------------------------------------------------------
@@ -295,7 +300,7 @@ class BaseReaderScreen(Screen):
         return self.chapter_ids[0] if self.chapter_ids else "c0"
 
     def render_toc(self) -> None:
-        listing = self.query_one("#toc-pane", ListView)
+        listing = self.query_one("#toc-pane", VimListView)
         listing.clear()
         for node, depth in self.toc_flat:
             title = node.get("title", "")
@@ -432,7 +437,7 @@ class BaseReaderScreen(Screen):
 
     def action_switch_pane(self) -> None:
         """Move the focus between the directory and the text."""
-        toc = self.query_one("#toc-pane", ListView)
+        toc = self.query_one("#toc-pane", VimListView)
         if toc.has_focus:
             self.query_one("#text-pane", VerticalScroll).focus()
         else:
@@ -473,7 +478,7 @@ class BaseReaderScreen(Screen):
         self.after_sentence_change()
 
     def action_focus_toc(self) -> None:
-        self.query_one("#toc-pane", ListView).focus()
+        self.query_one("#toc-pane", VimListView).focus()
 
     def toggle_fullscreen(self) -> None:
         """Show the text in the whole screen, or shrink it back to one page."""
@@ -527,7 +532,7 @@ class BaseReaderScreen(Screen):
         self._hits = payload.get("results", [])
         self._hit_index = -1
         self._pane_mode = "search"
-        listing = self.query_one("#toc-pane", ListView)
+        listing = self.query_one("#toc-pane", VimListView)
         listing.clear()
         if not self._hits:
             listing.append(ListItem(Static("（没有找到）")))
@@ -706,7 +711,7 @@ class ListenScreen(BaseReaderScreen):
     def compose(self) -> ComposeResult:
         with Vertical():
             with Horizontal(id="reader-body"):
-                yield ListView(id="toc-pane")
+                yield VimListView(id="toc-pane")
                 with Vertical(id="text-area"):
                     yield VerticalScroll(ChapterText(), id="text-pane")
             yield Input(placeholder="搜索全书…（回车确认，Esc 取消）", id="search-input")
@@ -716,6 +721,9 @@ class ListenScreen(BaseReaderScreen):
 
     def on_mount(self) -> None:
         self.query_one("#search-input").display = False
+        # 焦点默认在正文：h/j/k/l 是读的时候最常用的键。
+        # 按 Tab 切到目录，目录里 j/k/l 才是目录自己的键。
+        self.query_one("#text-pane", VerticalScroll).focus()
         self.load_book()
         if self.start_chapter and self.chapter and self.chapter.get("chapter_id") != self.start_chapter:
             self.load_chapter(self.start_chapter)
@@ -770,6 +778,32 @@ class ListenScreen(BaseReaderScreen):
         self._clock = Clock()
         self._timer = self.set_interval(0.1, self._tick)
         self.update_audio_panel()
+        self._prefetch_next()
+
+    def _prefetch_next(self) -> None:
+        """趁当前句还在播，把下一句下载下来。
+
+        不然每次换句都要等一次网络，节奏会一顿一顿的。
+        """
+        sentences = self.sentences
+        index = next(
+            (i for i, s in enumerate(sentences) if s["id"] == self.current_sentence["id"]),
+            -1,
+        ) if self.current_sentence else -1
+        if index < 0:
+            return
+        following = sentences[index + 1] if index + 1 < len(sentences) else None
+        if following is None:
+            return
+        target = self.app.audio.tempdir() / f"{following['id'].replace('.', '_')}.mp3"
+        if target.exists():
+            return
+        try:
+            self.app.api.download_audio(
+                self.book_id, following["id"], str(target)
+            )
+        except Exception:  # noqa: BLE001 - 预取失败不打扰用户
+            pass
 
     def _tick(self) -> None:
         """Advance the word highlight and the sentence."""

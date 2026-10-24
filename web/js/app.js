@@ -360,6 +360,7 @@ async function loadChapter(chapterId, sentenceId = null) {
       requestAnimationFrame(() => reader.jumpTo(sentenceId, { smooth: false }));
     }
     await loadTimeline(chapterId);
+    warmAhead(chapterId);
   } catch (error) {
     toast(error.message || '章节加载失败');
   }
@@ -392,6 +393,22 @@ const writeProgress = debounce(async () => {
     /* 进度写失败不影响阅读 */
   }
 }, 600);
+
+/* 提前把音频准备好：打开一章就在后台预热开头几句，
+ * 播放时就不用等网络。 */
+const warmed = new Set();
+
+function warmAhead(chapterId) {
+  if (!state.book || !chapterId || warmed.has(chapterId)) return;
+  warmed.add(chapterId);
+  api.warmAudio(state.book.book_id, {
+    chapter_id: chapterId,
+    voice_id: state.settings.voiceId || undefined,
+    limit: 12,
+  }).catch(() => {
+    // 预热失败不影响阅读：播放时照样按需合成。
+  });
+}
 
 /* 跨端接力：网页与终端读写同一份进度。
  * 终端停下 1.2 秒就推一次，网页每 5 秒拉一次；谁先动谁说了算，

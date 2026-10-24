@@ -25,17 +25,28 @@ EPUB 阅读器 + 有声书播放器。网页端读、网页端听、终端读、
 环境与依赖用 [uv](https://docs.astral.sh/uv/) 管理：它自己准备 `.venv` 与
 Python 版本（`.python-version` 锁定 3.12），不需要手工建虚拟环境。
 
+仓库里有两个互不干扰的项目：
+
+| 项目 | 位置 | 依赖 | 跑起来 |
+| --- | --- | --- | --- |
+| **服务端 + 网页端** | 仓库根 | fastapi / uvicorn / pydantic / edge-tts | `uv run lector-server` |
+| **终端端** | `terminal/` | 只有 textual | `cd terminal && uv run lector` |
+
+终端端只通过 HTTP 与服务端打交道，**不依赖服务端的任何代码**；服务端也不知道
+终端端的存在。两边各有自己的 `pyproject.toml` 与 `uv.lock`，可以分别安装、分别发版。
+
 ```bash
-uv sync                      # 装依赖（按 uv.lock）
+uv sync                      # 服务端：装依赖（按 uv.lock）
 uv run lector-server         # 起服务端，默认 127.0.0.1:8000
-uv run lector                # 起终端端
-uv run pytest -q             # 跑测试
+uv run pytest -q             # 服务端的测试
+
+cd terminal && uv sync && uv run lector   # 终端端
 ```
 
 或者用 make（`make help` 看全部）：
 
 ```bash
-make test                    # 跑测试
+make test                    # 两个项目的测试都跑
 make server                  # 起服务端
 make terminal                # 起终端端
 make book books/my.epub      # 造一本书，并送进服务端
@@ -168,13 +179,14 @@ uv run lector-server
 ## 结构
 
 ```
-pyproject.toml    uv 项目定义（依赖的唯一事实来源）
-uv.lock           锁定的依赖解析结果
+pyproject.toml    服务端项目：依赖的事实来源
+uv.lock           服务端的锁
 lector/          服务端：解析器、TTS、HTTP 层、SQLite
 web/             网页端：原生 ES Modules + CSS，无打包器
-terminal/        终端端：Textual
-tests/           pytest
+tests/           服务端的 pytest
+terminal/         终端端项目：自己的 pyproject.toml / uv.lock / Textual
 docs/            契约（API 与界面）
+deploy/          部署用的现成配置
 data/            运行时数据（git 忽略）
 ```
 

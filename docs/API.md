@@ -383,10 +383,12 @@ uv run lector
 批量预合成，请求：
 
 ```json
-{ "chapter_id": "c12", "voice_id": "zh-CN-XiaoxiaoNeural", "rate": "+0%" }
+{ "chapter_id": "c12", "voice_id": "zh-CN-XiaoxiaoNeural", "rate": "+0%", "limit": 12 }
 ```
 
 - `chapter_id` 为 `null` 表示全书。
+- `limit` 可选：一次最多预热多少句。客户端用它把预热拆成小段，
+  免得一个请求挂上好几分钟。
 - 同步执行，返回：
 
 ```json

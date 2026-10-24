@@ -9,6 +9,9 @@ import { api } from './api.js';
 import { state } from './state.js';
 import { splitWords, wordAt } from './util.js';
 
+/** 播放时提前几步把音频与词边界取回来。 */
+const PREFETCH_AHEAD = 3;
+
 export class Player {
   constructor() {
     this.audio = new Audio();
@@ -121,21 +124,23 @@ export class Player {
   }
 
   /**
-   * Fetch the next sentence while this one is still playing.
+   * Fetch the next few sentences while this one is still playing.
    *
    * The handover between two tiles has to be inaudible, and the first request
-   * for a tile may have to synthesise it — which takes seconds.  Fetching one
-   * sentence ahead removes both problems.
+   * for a tile may have to synthesise it — which takes seconds.  Fetching a
+   * few sentences ahead removes both problems.
    */
   prefetchNext() {
     const sentences = state.sentences();
     const index = sentences.findIndex((sentence) => sentence.id === this.sentenceId);
-    const next = sentences[index + 1];
-    if (!next) return;
-    Promise.all([
-      this._fetchAudio(next.id).catch(() => null),
-      this._fetchWords(next.id).catch(() => null),
-    ]);
+    for (let step = 1; step <= PREFETCH_AHEAD; step += 1) {
+      const next = sentences[index + step];
+      if (!next) break;
+      Promise.all([
+        this._fetchAudio(next.id).catch(() => null),
+        this._fetchWords(next.id).catch(() => null),
+      ]);
+    }
   }
 
   /** Move the play head inside the current sentence. */
