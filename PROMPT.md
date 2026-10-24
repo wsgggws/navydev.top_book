@@ -1,4 +1,4 @@
-# navydev.top_book（Lector）— 主构建提示词（Master Prompt）
+# navydev.top_ebook（Lector）— 主构建提示词（Master Prompt）
 
 > **用途**：把本文件整段粘贴给一个 coding agent，或直接作为项目的立项契约。
 > **配套契约**（构建时必须遵循，冲突时以契约文件为准）：
@@ -202,7 +202,7 @@ class TTSEngine(Protocol):
 ## 10. 开工第一条指令（给 agent）
 
 ```
-读 /Users/thj/github/navydev.top_book/AGENTS.md 与 PROMPT.md，然后从「阶段 0 · 骨架」开始执行。
+读 /Users/thj/github/navydev.top_ebook/AGENTS.md 与 PROMPT.md，然后从「阶段 0 · 骨架」开始执行。
 每完成一个阶段，先跑该阶段验收项，再在回复里给出：改了哪些文件、验收项逐条结论、命令输出。
 遇到 PROMPT.md 与 docs/API.md、docs/UI.md 冲突时，以 docs/ 下的契约为准，并同步修正 PROMPT.md。
 ```

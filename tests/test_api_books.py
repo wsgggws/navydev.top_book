@@ -199,56 +199,60 @@ def test_the_shelf_shows_each_books_own_progress(client, epub2_bytes: bytes):
 
 
 def test_the_app_can_live_under_a_path(tmp_path, epub2_bytes: bytes):
-    """挂在 /book 下时，接口、静态资源与短码都跟着走。"""
+    """挂在 /ebook 下时，接口、静态资源与短码都跟着走。"""
     from fastapi.testclient import TestClient
 
     from lector.config import load_settings
     from lector.web import create_app
 
     settings = load_settings(tmp_path / "data")
-    settings = settings.__class__(**{**settings.__dict__, "base_path": "/book"})
+    settings = settings.__class__(**{**settings.__dict__, "base_path": "/ebook"})
     client = TestClient(create_app(settings))
     book_id = client.post(
-        "/book/api/v1/books",
+        "/ebook/api/v1/books",
         files={"file": ("book.epub", epub2_bytes, "application/epub+zip")},
     ).json()["book"]["book_id"]
 
-    # 接口在 /book/api/v1
-    assert client.get("/book/api/v1/health").status_code == 200
-    assert client.get("/book/api/v1/books").status_code == 200
-    # 页面在 /book 与 /book/，并把基路径告诉前端
-    page = client.get("/book")
+    # 接口在 /ebook/api/v1
+    assert client.get("/ebook/api/v1/health").status_code == 200
+    assert client.get("/ebook/api/v1/books").status_code == 200
+    # 页面在 /ebook 与 /ebook/，并把基路径告诉前端
+    page = client.get("/ebook")
     assert page.status_code == 200
-    assert '<base href="/book/">' in page.text
-    assert 'window.lectorBase="/book"' in page.text
+    assert "<title>有声电子书</title>" in page.text
+    assert '<base href="/ebook/">' in page.text
+    assert 'window.lectorBase="/ebook"' in page.text
     assert "styles/tokens.css?v=" in page.text
     assert "js/app.js?v=" in page.text
     assert '<script type="importmap">' in page.text
-    assert '"/book/js/views/library.js":"/book/js/views/library.js?v=' in page.text
+    assert '"/ebook/js/views/library.js":"/ebook/js/views/library.js?v=' in page.text
     assert page.headers["cache-control"] == "no-cache"
 
-    page = client.get("/book/")
+    page = client.get("/ebook/")
     assert page.status_code == 200
-    assert '<base href="/book/">' in page.text
-    assert 'window.lectorBase="/book"' in page.text
+    assert '<base href="/ebook/">' in page.text
+    assert 'window.lectorBase="/ebook"' in page.text
 
     # 书与章节都是可刷新、可分享的前端路径。
-    for route in ("/book/b_12345678", "/book/b_12345678/c12"):
+    for route in ("/ebook/b_12345678", "/ebook/b_12345678/c12"):
         shell = client.get(route)
         assert shell.status_code == 200
-        assert '<base href="/book/">' in shell.text
-        assert 'window.lectorBase="/book"' in shell.text
-    assert client.get("/book/not-a-book").status_code == 404
+        assert '<base href="/ebook/">' in shell.text
+        assert 'window.lectorBase="/ebook"' in shell.text
+    assert client.get("/ebook/not-a-book").status_code == 404
+    assert client.get("/book").status_code == 404
+    assert client.get("/books").status_code == 404
+    assert client.get("/book/b_12345678").status_code == 404
     # 封面地址也带前缀（测试书没有封面，有的话必须是带前缀的）
-    books = client.get("/book/api/v1/books").json()
+    books = client.get("/ebook/api/v1/books").json()
     if books[0]["cover_url"]:
-        assert books[0]["cover_url"].startswith("/book/api/v1/")
+        assert books[0]["cover_url"].startswith("/ebook/api/v1/")
 
     # 短码链接带前缀
-    chapter = client.get(f"/book/api/v1/books/{book_id}/chapters/c0").json()["chapter"]
+    chapter = client.get(f"/ebook/api/v1/books/{book_id}/chapters/c0").json()["chapter"]
     sentence_id = chapter["blocks"][1]["sentences"][0]["id"]
     created = client.post(
-        "/book/api/v1/s",
+        "/ebook/api/v1/s",
         json={
             "book_id": book_id,
             "chapter_id": "c0",
@@ -256,7 +260,7 @@ def test_the_app_can_live_under_a_path(tmp_path, epub2_bytes: bytes):
             "word_index": None,
         },
     ).json()
-    assert created["url"].startswith("/book/s/")
+    assert created["url"].startswith("/ebook/s/")
 
 
 def test_repository_books_are_imported_and_public(tmp_path, epub2_bytes: bytes):

@@ -80,7 +80,7 @@ uv run lector-server
 
 ```bash
 # 一次性：环境变量
-LECTOR_URL=https://navydev.top/book uv run lector
+LECTOR_URL=https://navydev.top/ebook uv run lector
 
 # 或者在书架屏按 c 交互式填写，之后记在 ~/.config/lector/reader.json
 uv run lector

@@ -18,7 +18,7 @@ uv run lector    # 起客户端
 服务端不在本机时：
 
 ```bash
-LECTOR_URL=https://navydev.top/book LECTOR_TOKEN=xxx uv run lector
+LECTOR_URL=https://navydev.top/ebook uv run lector
 ```
 
 键位见 [../docs/UI.md](../docs/UI.md) §8。

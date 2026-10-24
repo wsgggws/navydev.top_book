@@ -26,7 +26,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     LECTOR_DATA_DIR=/data \
     LECTOR_HOST=0.0.0.0 \
     LECTOR_PORT=8010 \
-    LECTOR_BASE_PATH=/book
+    LECTOR_BASE_PATH=/ebook
 
 WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv

@@ -1,12 +1,12 @@
-name: navydev-top-book
+name: navydev-top-ebook
 
 services:
   lector:
     build:
       context: .
       dockerfile: Dockerfile
-    image: ${LECTOR_IMAGE:-ghcr.nju.edu.cn/wsgggws/navydev.top_book:latest}
-    container_name: navydev-top-book
+    image: ${LECTOR_IMAGE:-ghcr.nju.edu.cn/wsgggws/navydev.top_ebook:latest}
+    container_name: navydev-top-ebook
     restart: unless-stopped
     env_file:
       - .env
@@ -14,7 +14,7 @@ services:
       LECTOR_DATA_DIR: /data
       LECTOR_HOST: 0.0.0.0
       LECTOR_PORT: 8010
-      LECTOR_BASE_PATH: /book
+      LECTOR_BASE_PATH: /ebook
     ports:
       - "127.0.0.1:8010:8010"
     volumes:
@@ -31,7 +31,7 @@ services:
         - CMD
         - python
         - -c
-        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/book/api/v1/health', timeout=5)"
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/ebook/api/v1/health', timeout=5)"
       interval: 30s
       timeout: 8s
       retries: 3
@@ -44,4 +44,4 @@ services:
 
 volumes:
   lector_data:
-    name: navydev-top-book-data
+    name: navydev-top-ebook-data

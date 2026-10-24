@@ -216,9 +216,9 @@ CSS 自定义属性，定义在 `web/styles/tokens.css`。三套主题只覆盖�
 
 ### 3.7 URL 路径
 
-- 书架：`/book`
-- 书籍：`/book/{book_id}`
-- 章节：`/book/{book_id}/{chapter_id}`
+- 书架：`/ebook`
+- 书籍：`/ebook/{book_id}`
+- 章节：`/ebook/{book_id}/{chapter_id}`
 
 打开书籍或章节时同步更新地址栏；刷新或直接访问这些路径可以恢复对应位置。
 章节路径包含纯数字章节 id（如 `c12`），不包含句子 id。
@@ -362,9 +362,9 @@ CSS 自定义属性，定义在 `web/styles/tokens.css`。三套主题只覆盖�
 ```
 你在实现 Lector —— 一个 EPUB 阅读器 + 有声书播放器的界面层。
 
-先完整读 /Users/thj/github/navydev.top_book/docs/UI.md 与
-/Users/thj/github/navydev.top_book/docs/API.md，再读
-/Users/thj/github/navydev.top_book/AGENTS.md。三者冲突时以 docs/ 下的契约为准。
+先完整读 /Users/thj/github/navydev.top_ebook/docs/UI.md 与
+/Users/thj/github/navydev.top_ebook/docs/API.md，再读
+/Users/thj/github/navydev.top_ebook/AGENTS.md。三者冲突时以 docs/ 下的契约为准。
 
 【必须实现的】
 1. 网页端：书架页 + 阅读页 + 听书条 + 设置抽屉 + 目录抽屉 + 搜索。

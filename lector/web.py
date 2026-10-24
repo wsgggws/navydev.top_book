@@ -73,9 +73,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     audio = AudioService(settings, store, cache, engine)
 
     app = FastAPI(
-        title="Lector",
+        title="有声电子书",
         version=APP_VERSION,
-        description="EPUB 阅读器 + 有声书播放器",
+        description="EPUB 有声电子书阅读与收听服务",
     )
     base = settings.base_path
 
@@ -174,7 +174,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
             The base path is injected here: the client needs to know it to
             build the API URLs when the app is served under a prefix
-            (for example behind nginx at ``/book``).
+            (for example behind nginx at ``/ebook``).
             """
             markup = (web_dir / "index.html").read_text("utf-8")
             page_base = f"{base}/" if base else "/"
@@ -189,8 +189,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return HTMLResponse(markup, headers={"Cache-Control": "no-cache"})
 
         app.add_api_route(f"{base}/", index, include_in_schema=False)
-        # `/book` and `/book/` must both render the shell directly; a redirect
-        # would make relative asset URLs resolve against `/` instead of `/book/`.
+        # `/ebook` and `/ebook/` must both render the shell directly; a redirect
+        # would make relative asset URLs resolve against `/` instead of `/ebook/`.
         if base:
             app.add_api_route(base, index, include_in_schema=False)
 

@@ -1,4 +1,4 @@
-/* Lector — the browser application. */
+/* navydev.top_ebook — the browser application. */
 
 import { api, getToken, setToken } from './api.js';
 import { state } from './state.js';
@@ -299,7 +299,7 @@ function showLibrary({ fromRoute = false, replace = false } = {}) {
   dom.library.hidden = false;
   dom.reader.hidden = true;
   dom.btnBack.hidden = true;
-  dom.topbarBook.textContent = 'Lector';
+  dom.topbarBook.textContent = '有声电子书';
   dom.topbarChapter.textContent = '';
   dom.player.hidden = true;
   player.release();

@@ -35,10 +35,10 @@ class LibraryScreen(Screen):
 
     def compose(self) -> ComposeResult:
         with Vertical():
-            yield Static("  Lector  书架", id="shelf-title")
+            yield Static("  有声电子书  书架", id="shelf-title")
             yield Static("", id="shelf-server")
             yield VimListView(id="library-list")
-            yield Input(placeholder="服务器地址，例如 https://navydev.top/book", id="connect-url")
+            yield Input(placeholder="服务器地址，例如 https://navydev.top/ebook", id="connect-url")
             yield Input(placeholder="访问令牌（没有就留空）", id="connect-token")
             yield Footer()
 

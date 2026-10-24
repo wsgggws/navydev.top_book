@@ -1,11 +1,11 @@
 # 部署上线
 
-`navydev.top_book`（应用名仍是 Lector）线上挂在
-`https://navydev.top/book`。生产环境使用 Docker Compose，不使用 systemd。
+`navydev.top_ebook`（应用名仍是 Lector）线上挂在
+`https://navydev.top/ebook`。生产环境使用 Docker Compose，不使用 systemd。
 
 - 本地开发：`uv run lector-server`，默认 `127.0.0.1:8000`
-- 线上生产：容器只监听宿主机 `127.0.0.1:8010`，由中央 nginx 转发 `/book`
-- 持久数据：Docker 命名卷 `navydev-top-book-data`
+- 线上生产：容器只监听宿主机 `127.0.0.1:8010`，由中央 nginx 转发 `/ebook`
+- 持久数据：Docker 命名卷 `navydev-top-ebook-data`
 
 ## 1. 服务器准备
 
@@ -14,7 +14,7 @@
 - Docker Engine
 - Docker Compose v2（`docker compose version` 必须可用）
 - SSH 用户可以执行 Docker，不需要 root 登录或 systemd
-- 已由 `nginx-config` 配好 `navydev.top` 证书与 `/book` 反向代理
+- 已由 `nginx-config` 配好 `navydev.top` 证书与 `/ebook` 反向代理
 
 服务器**不需要**单独安装 Python、uv，也不需要创建系统用户。
 
@@ -43,13 +43,13 @@
 
 ```bash
 ssh-keygen -t ed25519 \
-  -C "github-actions@navydev.top_book" \
-  -f ~/.ssh/navydev_top_book_deploy \
+  -C "github-actions@navydev.top_ebook" \
+  -f ~/.ssh/navydev_top_ebook_deploy \
   -N ""
 
-ssh-copy-id -i ~/.ssh/navydev_top_book_deploy.pub user@server
+ssh-copy-id -i ~/.ssh/navydev_top_ebook_deploy.pub user@server
 
-gh secret set SSH_PRIVATE_KEY < ~/.ssh/navydev_top_book_deploy
+gh secret set SSH_PRIVATE_KEY < ~/.ssh/navydev_top_ebook_deploy
 gh secret set REMOTE_IP --body "server-ip"
 gh secret set SSH_USER --body "user"
 gh secret set LECTOR_TOKEN --body "随机令牌:admin"
@@ -58,7 +58,7 @@ gh secret set LECTOR_TOKEN --body "随机令牌:admin"
 私钥文件权限应为 600：
 
 ```bash
-chmod 600 ~/.ssh/navydev_top_book_deploy
+chmod 600 ~/.ssh/navydev_top_ebook_deploy
 ```
 
 ## 3. GitHub Actions CI
@@ -84,14 +84,18 @@ chmod 600 ~/.ssh/navydev_top_book_deploy
 
 1. 在 GitHub runner 重跑服务端与终端测试；
 2. 打包源码、`books/*.epub`、`Dockerfile`、`docker-compose.yml` 和 `Makefile`；
-3. 通过 SCP 上传到 `~/deploy/navydev.top_book-staging-<sha>/`；
-4. 在服务器解包到 `~/deploy/navydev.top_book/releases/<sha>/`；
+3. 通过 SCP 上传到 `~/deploy/navydev.top_ebook-staging-<sha>/`；
+4. 在服务器解包到 `~/deploy/navydev.top_ebook/releases/<sha>/`；
 5. 在 GitHub runner 构建 `linux/amd64` 镜像并推送到 GHCR；
 6. 写入权限为 600 的 `.env`；
 7. 从国内 GHCR 镜像站拉取并启动镜像（`ghcr.nju.edu.cn`）；
-8. 轮询 `http://127.0.0.1:8010/book/api/v1/health`；
-9. 健康检查通过后切换 `~/deploy/navydev.top_book/current`；
+8. 轮询 `http://127.0.0.1:8010/ebook/api/v1/health`；
+9. 健康检查通过后切换 `~/deploy/navydev.top_ebook/current`；
 10. 失败则用上一个 release 的镜像标签重新启动并回滚。
+
+从 `navydev.top_book` 改名后第一次发布时，工作流会停掉旧容器、把
+`navydev-top-book-data` 数据卷复制到 `navydev-top-ebook-data`，确认新容器健康后再
+删除旧容器；旧数据卷会保留作备份。迁移失败则自动恢复旧容器。
 
 服务端不需要 uv：依赖在 Docker 构建阶段由镜像内的 uv 按 `uv.lock` 安装。
 
@@ -100,7 +104,7 @@ chmod 600 ~/.ssh/navydev_top_book_deploy
 ```dotenv
 LECTOR_TOKEN=<你的令牌>
 LECTOR_TTS_ENGINE=edge
-LECTOR_IMAGE=ghcr.nju.edu.cn/wsgggws/navydev.top_book:<git-sha>
+LECTOR_IMAGE=ghcr.nju.edu.cn/wsgggws/navydev.top_ebook:<git-sha>
 ```
 
 `LECTOR_DATA_DIR=/data`、监听地址和端口由 `docker-compose.yml` 固定。
@@ -126,8 +130,8 @@ git push origin main
 ```yaml
 services:
   lector:
-    image: ghcr.nju.edu.cn/wsgggws/navydev.top_book:<git-sha>
-    container_name: navydev-top-book
+    image: ghcr.nju.edu.cn/wsgggws/navydev.top_ebook:<git-sha>
+    container_name: navydev-top-ebook
     restart: unless-stopped
     ports:
       - "127.0.0.1:8010:8010"
@@ -138,7 +142,7 @@ services:
 固定命名卷：
 
 ```text
-navydev-top-book-data
+navydev-top-ebook-data
 ```
 
 `make docker-stop` 只停止容器，不会删除这个卷。
@@ -146,20 +150,20 @@ navydev-top-book-data
 ## 6. 常用运维
 
 ```bash
-cd ~/deploy/navydev.top_book/current
+cd ~/deploy/navydev.top_ebook/current
 
 make docker-status
 make docker-logs
 make docker-release
 
-curl -fsS http://127.0.0.1:8010/book/api/v1/health
-readlink -f ~/deploy/navydev.top_book/current
+curl -fsS http://127.0.0.1:8010/ebook/api/v1/health
+readlink -f ~/deploy/navydev.top_ebook/current
 ```
 
 回滚到上一个 release：
 
 ```bash
-cd ~/deploy/navydev.top_book
+cd ~/deploy/navydev.top_ebook
 PREV="$(readlink -f current)"
 ls -1dt releases/*
 
@@ -176,7 +180,7 @@ mv -Tf ../current.next ../current
 ```bash
 mkdir -p ~/backups
 docker run --rm \
-  -v navydev-top-book-data:/data:ro \
+  -v navydev-top-ebook-data:/data:ro \
   -v "$HOME/backups:/backup" \
   alpine \
   tar -czf "/backup/lector-$(date +%F).tgz" -C /data .
@@ -185,7 +189,7 @@ docker run --rm \
 恢复前先停止容器：
 
 ```bash
-cd ~/deploy/navydev.top_book/current
+cd ~/deploy/navydev.top_ebook/current
 make docker-stop
 ```
 
@@ -197,19 +201,19 @@ make docker-stop
 `config/nginx/conf.d/navydev-top.conf`：
 
 ```nginx
-upstream lector_app {
+upstream ebook_app {
     server 127.0.0.1:8010;
     keepalive 32;
 }
 
-location = /book {
-    # LECTOR_BASE_PATH=/book，代理时不能剥掉前缀。
-    proxy_pass http://lector_app;
+location = /ebook {
+    # LECTOR_BASE_PATH=/ebook，代理时不能剥掉前缀。
+    proxy_pass http://ebook_app;
     proxy_read_timeout 120s;
 }
 
-location /book/ {
-    proxy_pass http://lector_app;
+location /ebook/ {
+    proxy_pass http://ebook_app;
 }
 ```
 
@@ -223,7 +227,7 @@ HTTP/2 使用 nginx 1.18 支持的 `listen 443 ssl http2;`。音频与上传接�
 ```bash
 cd terminal
 uv sync
-LECTOR_URL=https://navydev.top/book \
+LECTOR_URL=https://navydev.top/ebook \
 uv run lector
 ```
 
@@ -236,4 +240,4 @@ uv run lector
 - 上传上限 50MB，nginx 的 `client_max_body_size` 要留出余量。
 - 音频 URL 的内容由文本、音色、倍速与引擎版本共同决定，可长期缓存。
 - 换音色后不必手工删旧文件；缓存键变了，旧缓存只是不再命中。
-- 不要使用 `docker compose down -v`，`-v` 会删除 `navydev-top-book-data`。
+- 不要使用 `docker compose down -v`，`-v` 会删除 `navydev-top-ebook-data`。

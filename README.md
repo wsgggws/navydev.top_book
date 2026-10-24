@@ -1,13 +1,13 @@
-# navydev.top_book
+# navydev.top_ebook
 
-**Lector** —— EPUB 阅读器 + 有声书播放器，线上地址是
-[navydev.top/book](https://navydev.top/book)。
+**有声电子书** —— EPUB 阅读与收听服务，线上地址是
+[navydev.top/ebook](https://navydev.top/ebook)。
 
 网页端读、网页端听、终端读、终端听。两端连接同一台内容服务，但各自记录
 自己的阅读位置和播放选项：网页存浏览器 `localStorage`，终端存本机缓存文件。
 
-网页支持直接分享的路径：`/book/{book_id}` 和
-`/book/{book_id}/{chapter_id}`。
+网页支持直接分享的路径：`/ebook/{book_id}` 和
+`/ebook/{book_id}/{chapter_id}`。
 
 **读到哪，听到哪。**
 
@@ -84,7 +84,7 @@ make book books/my.epub      # 造一本书，并送进服务端
 | `LECTOR_TTS_ENGINE` | `edge` | `edge` / `espeak` / `auto` |
 | `LECTOR_VOICE` | `zh-CN-YunxiNeural` | 默认音色（中文男声） |
 | `LECTOR_MAX_UPLOAD` | `52428800` | 上传上限（字节） |
-| `LECTOR_BASE_PATH` | 空 | 把应用挂在某个路径下（如 `/book`），nginx 那边路径要原样传过去 |
+| `LECTOR_BASE_PATH` | 空 | 把应用挂在某个路径下（如 `/ebook`），nginx 那边路径要原样传过去 |
 
 ## 线上部署与终端接入
 
@@ -103,7 +103,7 @@ uv run lector-server
 
 ```bash
 # 一次性：环境变量
-LECTOR_URL=https://navydev.top/book uv run lector
+LECTOR_URL=https://navydev.top/ebook uv run lector
 
 # 或者启动后按 c 交互式填写地址与令牌，记在 ~/.config/lector/reader.json
 uv run lector
@@ -171,7 +171,7 @@ make book BOOK="books/某本书 (作者).epub"  # 路径带空格时用这种写
 ## 部署上线
 
 见 **[docs/DEPLOY.md](docs/DEPLOY.md)**：GitHub Actions 测试后通过 SSH 发布，
-服务器用 Docker Compose 运行容器，中央 nginx 管 `/book` 路径与 TLS。
+服务器用 Docker Compose 运行容器，中央 nginx 管 `/ebook` 路径与 TLS。
 数据保存在固定 Docker 命名卷里，不依赖 systemd。
 
 一句话版本：

@@ -27,9 +27,9 @@ click==8.5.0
 colorama==0.4.6 ; sys_platform == 'win32'
     # via pytest
 edge-tts==7.3.1
-    # via navydev-top-book
+    # via navydev-top-ebook
 fastapi==0.162.0
-    # via navydev-top-book
+    # via navydev-top-ebook
 frozenlist==1.8.0
     # via
     #   aiohttp
@@ -78,7 +78,7 @@ propcache==0.5.4
 pydantic==2.14.1
     # via
     #   fastapi
-    #   navydev-top-book
+    #   navydev-top-ebook
 pydantic-core==2.50.1
     # via pydantic
 pygments==2.21.0
@@ -88,7 +88,7 @@ pygments==2.21.0
     #   textual
 pytest==9.1.1
 python-multipart==0.0.32
-    # via navydev-top-book
+    # via navydev-top-ebook
 rich==15.0.0
     # via textual
 starlette==1.9.0
@@ -115,6 +115,6 @@ typing-inspection==0.4.4
     #   fastapi
     #   pydantic
 uvicorn==0.54.0
-    # via navydev-top-book
+    # via navydev-top-ebook
 yarl==1.25.1
     # via aiohttp

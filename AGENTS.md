@@ -1,6 +1,6 @@
 # AGENTS.md
 
-你在维护 **navydev.top_book（Lector）** —— 一个 EPUB 阅读器 + 有声书播放器。
+你在维护 **navydev.top_ebook（Lector）** —— 一个有声电子书阅读与收听服务。
 网页端与终端端共享同一台内容服务，但阅读位置和播放选项各自独立记录。
 
 ## 首要原则
@@ -68,9 +68,9 @@ make import books/my.epub   # 把已有的 EPUB 送进服务端
 
 线上发布由 `.github/workflows/deploy.yml` 完成：先跑两端测试，再通过 SSH 上传
 release，GitHub Actions 构建并推送镜像到 GHCR，服务器在
-`~/deploy/navydev.top_book/releases/<sha>` 解包并执行
+`~/deploy/navydev.top_ebook/releases/<sha>` 解包并执行
 `make docker-release`，最后切换 `current` 软链。生产容器只监听
-`127.0.0.1:8010`，数据在 Docker 命名卷 `navydev-top-book-data`。
+`127.0.0.1:8010`，数据在 Docker 命名卷 `navydev-top-ebook-data`。
 **不要改回 systemd。**
 
 - 每个项目各有自己的 `pyproject.toml` 与 `uv.lock`，都是该项目的依赖事实来源，都要提交。

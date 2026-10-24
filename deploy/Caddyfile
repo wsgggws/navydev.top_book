@@ -1,5 +1,5 @@
 # Caddy：自动续证书，只要一个域名。
 navydev.top {
-    # Lector 自己按 /book 前缀提供页面和 API，因此路径要原样转发。
+    # 有声电子书自己按 /ebook 前缀提供页面和 API，因此路径要原样转发。
     reverse_proxy 127.0.0.1:8010
 }

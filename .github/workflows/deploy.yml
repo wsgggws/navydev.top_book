@@ -13,13 +13,13 @@ permissions:
   packages: write
 
 concurrency:
-  group: deploy-navydev-top-book
+  group: deploy-navydev-top-ebook
   cancel-in-progress: true
 
 env:
-  APP_ROOT: deploy/navydev.top_book
-  STAGING_PATH: deploy/navydev.top_book-staging-${{ github.sha }}
-  HEALTH_URL: http://127.0.0.1:8010/book/api/v1/health
+  APP_ROOT: deploy/navydev.top_ebook
+  STAGING_PATH: deploy/navydev.top_ebook-staging-${{ github.sha }}
+  HEALTH_URL: http://127.0.0.1:8010/ebook/api/v1/health
 
 jobs:
   test:
@@ -137,17 +137,52 @@ jobs:
             RELEASE_DIR="${APP_ROOT}/releases/${RELEASE_ID}"
             CURRENT_LINK="${APP_ROOT}/current"
             PREVIOUS="$(readlink -f "${CURRENT_LINK}" 2>/dev/null || true)"
+            LEGACY_CONTAINER="navydev-top-book"
+            LEGACY_VOLUME="navydev-top-book-data"
+            DATA_VOLUME="navydev-top-ebook-data"
+            LEGACY_STOPPED=0
 
             mkdir -p "${RELEASE_DIR}" "${APP_ROOT}/releases"
             tar -xzf "${STAGING_PATH}/app.tgz" -C "${RELEASE_DIR}"
             install -m 0600 "${STAGING_PATH}/lector.env" "${RELEASE_DIR}/.env"
 
+            # 先拉取新镜像，网络失败时旧服务完全不受影响。
+            (cd "${RELEASE_DIR}" && docker compose pull)
+
             rollback() {
               if [ -n "${PREVIOUS}" ] && [ -d "${PREVIOUS}" ]; then
                 echo "回滚到 ${PREVIOUS}" >&2
                 (cd "${PREVIOUS}" && make docker-release)
+              elif [ "${LEGACY_STOPPED}" -eq 1 ]; then
+                echo "回滚到旧版容器 ${LEGACY_CONTAINER}" >&2
+                docker stop navydev-top-ebook >/dev/null 2>&1 || true
+                docker rm navydev-top-ebook >/dev/null 2>&1 || true
+                docker start "${LEGACY_CONTAINER}"
               fi
             }
+
+            if docker inspect "${LEGACY_CONTAINER}" >/dev/null 2>&1; then
+              docker stop "${LEGACY_CONTAINER}" >/dev/null
+              LEGACY_STOPPED=1
+            fi
+
+            # 首次改名时把旧数据卷完整复制到新卷；旧卷保留作为备份。
+            docker volume create "${DATA_VOLUME}" >/dev/null
+            if docker volume inspect "${LEGACY_VOLUME}" >/dev/null 2>&1; then
+              if ! docker run --rm \
+                -v "${DATA_VOLUME}:/to" \
+                swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/python:3.12-slim \
+                test -f /to/lector.db; then
+                if ! docker run --rm \
+                  -v "${LEGACY_VOLUME}:/from:ro" \
+                  -v "${DATA_VOLUME}:/to" \
+                  swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/python:3.12-slim \
+                  sh -c 'cp -a /from/. /to/'; then
+                  rollback
+                  exit 1
+                fi
+              fi
+            fi
 
             # 先启动新容器；构建或启动失败时旧容器仍在，仍执行一次显式回滚。
             if ! (cd "${RELEASE_DIR}" && make docker-release); then
@@ -166,7 +201,7 @@ jobs:
 
             if [ "${healthy}" -ne 1 ]; then
               echo "健康检查失败，回滚到上一个 release。" >&2
-              docker logs --tail=200 navydev-top-book || true
+              docker logs --tail=200 navydev-top-ebook || true
               rollback
               exit 1
             fi
@@ -176,6 +211,9 @@ jobs:
 
             # 保留五个版本，方便排查和手工回滚。
             ls -1dt "${APP_ROOT}"/releases/* 2>/dev/null | tail -n +6 | xargs -r rm -rf
+            if [ "${LEGACY_STOPPED}" -eq 1 ]; then
+              docker rm "${LEGACY_CONTAINER}" >/dev/null 2>&1 || true
+            fi
             rm -rf "${STAGING_PATH}"
           EOF
 
