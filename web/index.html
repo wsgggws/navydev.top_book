@@ -168,7 +168,17 @@
   <div class="player-right">
     <span class="player-time" id="player-time">00:00 / 00:00</span>
     <button class="text-btn" id="btn-follow" title="跟随朗读位置">跟随<span class="dot" id="follow-dot" hidden></span></button>
-    <button class="text-btn" id="btn-rate" title="倍速">1.0×</button>
+    <div class="pop-wrap">
+      <button class="text-btn" id="btn-rate" title="倍速" aria-haspopup="true" aria-expanded="false">1.0×</button>
+      <div class="popup" id="rate-menu" hidden role="menu" aria-label="倍速">
+        <button role="menuitem" data-rate="0.75">0.75×</button>
+        <button role="menuitem" data-rate="1">1.0×</button>
+        <button role="menuitem" data-rate="1.25">1.25×</button>
+        <button role="menuitem" data-rate="1.5">1.5×</button>
+        <button role="menuitem" data-rate="1.75">1.75×</button>
+        <button role="menuitem" data-rate="2">2.0×</button>
+      </div>
+    </div>
     <button class="text-btn" id="btn-voice" title="音色">—</button>
     <button class="icon-btn" id="btn-player-close" aria-label="关闭听书条" title="关闭">
       <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15"/></svg>

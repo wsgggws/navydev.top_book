@@ -25,8 +25,12 @@ export class ReaderView {
 
     this.settle = debounce(() => this._syncFromScroll(), 150);
     this.scroll.addEventListener('scroll', () => {
+      if (this._programmaticScroll) {
+        // 动画还没停，别把"程序在滚"当成"用户在滚"。
+        this._armProgrammatic();
+        return;
+      }
       this.settle();
-      if (this._programmaticScroll) return;
       this.userScrolled = true;
       this.follow = false;
       if (this.onScrollEnd) this.onScrollEnd(false);
@@ -68,8 +72,19 @@ export class ReaderView {
         this.column.append(list);
         continue;
       }
-      this.column.append(this.renderBlock(block));
+      const node = this.renderBlock(block);
+      this.column.append(node);
+      // 图片是后到的，版式会跟着动；到了就把当前句重新摆回阅读带。
+      for (const image of node.querySelectorAll('img')) {
+        image.addEventListener('load', () => this.reanchor(), { once: true });
+      }
     }
+  }
+
+  /** 把当前句重新摆回阅读带（图片撑开版式后要重来一次）。 */
+  reanchor() {
+    if (!this.currentElement || !this.follow) return;
+    this.scrollToNode(this.currentElement, { instant: true });
   }
 
   /** A heading that repeats the chapter title is shown only once. */
@@ -117,6 +132,22 @@ export class ReaderView {
     return this.sentenceNodes.get(sentenceId) || null;
   }
 
+  /**
+   * Mark a scroll as ours.
+   *
+   * The flag has to survive the whole animation: a long smooth scroll easily
+   * outlasts a fixed timeout, and letting the flag lapse mid-flight makes the
+   * reader think the user scrolled — which pauses the follow, and then the
+   * text stops tracking the voice.
+   */
+  _armProgrammatic() {
+    if (this._programmaticTimer) clearTimeout(this._programmaticTimer);
+    this._programmaticTimer = setTimeout(() => {
+      this._programmaticScroll = false;
+      this._programmaticTimer = null;
+    }, 500);
+  }
+
   /** Move the cursor line. */
   setCurrent(sentenceId, { scroll = false } = {}) {
     if (this.currentElement) {
@@ -127,9 +158,7 @@ export class ReaderView {
     if (!node) return;
     node.classList.add('is-current');
     if (scroll) {
-      this._programmaticScroll = true;
-      scrollIntoBand(node, this.scroll);
-      setTimeout(() => { this._programmaticScroll = false; }, 420);
+      this.scrollToNode(node, { instant: true });
       this.userScrolled = false;
       this.follow = true;
     }
@@ -187,6 +216,8 @@ export class ReaderView {
   }
 
   _syncFromScroll() {
+    // 播放中游标跟着声音走，滚动不该反过来改它。
+    if (this.locked) return;
     const sentenceId = this.sentenceInBand();
     if (!sentenceId) return;
     if (this.currentElement && this.currentElement.dataset.sid === sentenceId) return;
@@ -197,12 +228,30 @@ export class ReaderView {
   jumpTo(sentenceId, { smooth = true } = {}) {
     const node = this.elementFor(sentenceId);
     if (!node) return;
-    this._programmaticScroll = true;
-    scrollIntoBand(node, this.scroll, smooth);
-    setTimeout(() => { this._programmaticScroll = false; }, 420);
+    this.scrollToNode(node, { smooth });
     this.userScrolled = false;
     this.follow = true;
     if (this.onCursorMove) this.onCursorMove(sentenceId, { scroll: false });
+  }
+
+  /**
+   * Put a node into the reading band.
+   *
+   * A long jump goes there at once — a smooth scroll across a whole chapter
+   * takes seconds, and the reader is left staring at the old place for all
+   * of it.  A short one glides, because that feels better.
+   */
+  scrollToNode(node, { smooth = false, instant = false } = {}) {
+    if (!node) return;
+    this._programmaticScroll = true;
+    this._armProgrammatic();
+    const distance = Math.abs(
+      node.getBoundingClientRect().top
+      - (this.scroll.getBoundingClientRect().top + this.scroll.clientHeight * 0.3),
+    );
+    const far = distance > this.scroll.clientHeight * 1.5;
+    const useSmooth = smooth && !far && !instant;
+    scrollIntoBand(node, this.scroll, useSmooth);
   }
 
   /** Find the block that carries an anchor and return its first sentence. */

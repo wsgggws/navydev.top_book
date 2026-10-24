@@ -119,3 +119,41 @@
   .player-status { bottom: calc(100% + 4px); }
   .player-bar { height: 4px; }
 }
+
+/* ---- 弹出菜单 ---- */
+.pop-wrap { position: relative; }
+
+.popup {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  min-width: 88px;
+  padding: var(--sp-1);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  animation: pop-in 140ms var(--ease-out);
+}
+
+@keyframes pop-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.popup button {
+  border: none;
+  background: none;
+  border-radius: 4px;
+  padding: var(--sp-2) var(--sp-3);
+  text-align: right;
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.popup button:hover { background: var(--accent-soft); color: var(--text); }
+.popup button.is-active { color: var(--accent); font-weight: 600; }

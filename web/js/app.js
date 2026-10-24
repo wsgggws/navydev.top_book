@@ -35,6 +35,7 @@ const dom = {
   btnPrev: $('#btn-prev'),
   btnNext: $('#btn-next'),
   btnRate: $('#btn-rate'),
+  rateMenu: $('#rate-menu'),
   btnVoice: $('#btn-voice'),
   btnPlayerClose: $('#btn-player-close'),
   btnFollow: $('#btn-follow'),
@@ -564,6 +565,7 @@ const refreshTimeline = debounce(() => {
 player.onSentence = (sentenceId, words, granularity) => {
   reader.setWords(sentenceId, words, granularity);
   reader.setCurrent(sentenceId, { scroll: reader.follow });
+  reader.locked = true;
   if (state.cursor && state.cursor.sentence_id !== sentenceId) {
     state.setCursor({ ...state.cursor, sentence_id: sentenceId }, 'play');
     writeProgress();
@@ -576,6 +578,8 @@ player.onSentence = (sentenceId, words, granularity) => {
 };
 
 player.onState = (playing, finished) => {
+  // 播放时游标归声音管，滚动不再改它；停下来才交还给用户。
+  reader.locked = playing;
   dom.btnPlay.setAttribute('aria-label', playing ? '暂停' : '播放');
   dom.btnPlay.innerHTML = playing
     ? '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4h3v12H6zM11 4h3v12h-3z"/></svg>'
@@ -608,13 +612,45 @@ dom.btnPlayerClose.addEventListener('click', () => {
   dom.player.hidden = true;
   if (state.cursor) reader.clearWords(state.cursor.sentence_id);
 });
-dom.btnRate.addEventListener('click', () => {
-  const steps = [0.75, 1, 1.25, 1.5, 1.75, 2];
-  const index = steps.findIndex((value) => value >= state.settings.rate - 0.01);
-  const next = steps[(index + 1) % steps.length];
-  state.setSetting('rate', next);
-  player.setRate(next);
+/* 倍速：点一下弹出菜单，而不是一轮轮地转 */
+const RATE_STEPS = [0.75, 1, 1.25, 1.5, 1.75, 2];
+
+function openRateMenu() {
+  const menu = dom.rateMenu;
+  for (const button of menu.querySelectorAll('button')) {
+    const value = Number(button.dataset.rate);
+    button.classList.toggle('is-active', Math.abs(value - state.settings.rate) < 0.01);
+  }
+  menu.hidden = false;
+  dom.btnRate.setAttribute('aria-expanded', 'true');
+}
+
+function closeRateMenu() {
+  dom.rateMenu.hidden = true;
+  dom.btnRate.setAttribute('aria-expanded', 'false');
+}
+
+dom.btnRate.addEventListener('click', (event) => {
+  event.stopPropagation();
+  if (dom.rateMenu.hidden) openRateMenu();
+  else closeRateMenu();
+});
+
+dom.rateMenu.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-rate]');
+  if (!button) return;
+  event.stopPropagation();
+  const value = Number(button.dataset.rate);
+  state.setSetting('rate', value);
+  player.setRate(value);
   applySettings();
+  closeRateMenu();
+});
+
+document.addEventListener('click', (event) => {
+  if (!dom.rateMenu.hidden && !dom.rateMenu.contains(event.target)) {
+    closeRateMenu();
+  }
 });
 dom.btnVoice.addEventListener('click', () => openDrawer('settings'));
 
@@ -742,6 +778,7 @@ document.addEventListener('keydown', async (event) => {
 
   const key = event.key;
   if (key === 'Escape') {
+    if (!dom.rateMenu.hidden) { closeRateMenu(); return; }
     if (drawerOpen()) { closeDrawers(); return; }
     if (document.body.classList.contains('immersive')) {
       document.body.classList.remove('immersive');
