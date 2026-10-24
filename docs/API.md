@@ -56,7 +56,39 @@
 | 503 | `TTS_UNAVAILABLE` | TTS 引擎不可用或正在冷启动 | 降级为纯阅读模式，提示重试 |
 | 504 | `TTS_TIMEOUT` | 单句合成超时 | 该句标记失败，其余可读 |
 
-### 0.4 限流
+### 0.4 线上部署与终端接入
+
+服务要放到公网上，**必须设置 `LECTOR_TOKEN`**：未设置令牌时服务端只监听
+`127.0.0.1`，不配置 `LECTOR_HOST` 就不会对外暴露。令牌同时是终端端的接入凭证。
+
+```bash
+# 服务端
+export LECTOR_TOKEN="$(openssl rand -hex 24)"
+export LECTOR_HOST=127.0.0.1        # 交给反向代理，不直接暴露
+export LECTOR_PORT=8000
+uv run lector-server
+```
+
+推荐在前面放一层反向代理（Caddy / nginx）负责 TLS，服务只监听回环地址：
+
+```
+终端 ──https──▶ 反向代理 ──http──▶ lector.web:app (127.0.0.1:8000)
+```
+
+终端端用同一个令牌接入，两种方式：
+
+```bash
+# 一次性：环境变量
+LECTOR_URL=https://reader.example.com LECTOR_TOKEN=xxx uv run lector
+
+# 或者在书架屏按 c 交互式填写，之后记在 ~/.config/lector/reader.json
+uv run lector
+```
+
+终端对每个 `/api/v1/*` 请求都带上 `Authorization: Bearer <token>`；
+`GET /api/v1/health` 不需要令牌，可用��探测服务是否活着。
+
+### 0.5 限流
 
 按客户端 IP：上传接口 10 次/分钟，其余读接口 600 次/分钟。超限返回 429 与 `Retry-After`（秒）。写接口命中限流时**不做**自动重试。
 

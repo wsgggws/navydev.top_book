@@ -13,6 +13,7 @@ from textual.theme import Theme
 
 from lector_tui.api import ApiClient
 from lector_tui.audio import AudioPlayer
+from lector_tui.config import ClientConfig
 from lector_tui.screens.library import LibraryScreen
 
 #: The three themes of the interface specification.
@@ -92,14 +93,41 @@ class LectorApp(App):
 
     #toc-pane {
         width: 30;
+        height: 1fr;
         border-right: solid $panel;
         overflow-y: auto;
     }
 
+    /* 正文不必铺满整屏：默认只占中间一页，f 键切到全屏。 */
+    #text-area {
+        width: 1fr;
+        height: 1fr;
+        align: center middle;
+    }
+
     #text-pane {
         width: 1fr;
+        height: auto;
+        max-height: 26;
         overflow-y: auto;
         padding: 0 2;
+        border-top: solid $panel;
+        border-bottom: solid $panel;
+    }
+
+    Screen.fullscreen #text-pane {
+        max-height: 100%;
+        border-top: none;
+        border-bottom: none;
+    }
+
+    #search-input {
+        display: none;
+        height: 3;
+    }
+
+    #search-input:focus {
+        border: tall $accent;
     }
 
     #status-bar {
@@ -142,15 +170,18 @@ class LectorApp(App):
     BINDINGS = [
         ("ctrl+c", "quit", "退出"),
         ("m", "cycle_theme", "主题"),
+        ("f", "toggle_fullscreen", "全屏"),
         ("question_mark", "help", "帮助"),
     ]
 
     def __init__(self, base_url: str | None = None, token: str | None = None) -> None:
         super().__init__()
-        self.api = ApiClient(
-            base_url=base_url or os.environ.get("LECTOR_URL", "http://127.0.0.1:8000"),
-            token=token or os.environ.get("LECTOR_TOKEN", ""),
-        )
+        self.config = ClientConfig.load()
+        if base_url:
+            self.config.url = base_url.rstrip("/")
+        if token is not None:
+            self.config.token = token
+        self.api = ApiClient(base_url=self.config.url, token=self.config.token)
         self.audio = AudioPlayer()
         for theme in THEMES.values():
             self.register_theme(theme)
@@ -161,19 +192,32 @@ class LectorApp(App):
     def on_mount(self) -> None:
         self.push_screen(LibraryScreen())
 
+    def connect_to(self, url: str, token: str) -> None:
+        """Point the client at another server and remember it."""
+        self.config.url = url.strip().rstrip("/")
+        self.config.token = token.strip()
+        self.config.save()
+        self.api = ApiClient(base_url=self.config.url, token=self.config.token)
+
     def action_cycle_theme(self) -> None:
         """Switch between the three themes."""
         order = list(THEMES)
         index = order.index(self.theme) if self.theme in order else 0
         self.theme = order[(index + 1) % len(order)]
 
+    def action_toggle_fullscreen(self) -> None:
+        """Show the text in the whole screen, or shrink it back."""
+        screen = self.screen
+        if hasattr(screen, "toggle_fullscreen"):
+            screen.toggle_fullscreen()
+
     def action_help(self) -> None:
         """Show the key bindings."""
         self.notify(
-            "↑↓ 滚动 · ←→ 上一句/下一句 · Space 听书 · [ ] 换章 · s 同步进度 · "
-            "S 拉取进度 · m 主题 · q 返回",
+            "hjkl 移动 · ←→ 换句 · gg/G 章首末 · Ctrl+d/u 半页 · / 搜索 · "
+            "Space 听书 · [ ] 换章 · s 同步 · S 拉取 · f 全屏 · m 主题 · q 返回",
             title="快捷键",
-            timeout=6,
+            timeout=8,
         )
 
     def on_exit(self) -> None:

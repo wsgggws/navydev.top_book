@@ -35,7 +35,11 @@ uv run pytest -q             # 跑测试
 打开 http://localhost:8000，把 `books/` 里的 EPUB 拖进去。
 
 终端端复用同一套 API 与同一份进度，默认连 `http://127.0.0.1:8000`；
-用 `LECTOR_URL` 与 `LECTOR_TOKEN` 改地址与令牌。
+用 `LECTOR_URL` 与 `LECTOR_TOKEN` 改地址与令牌，或在书架屏按 `c` 填写。
+
+键位尽量照 vim 来：`hjkl` 移动、`Ctrl+d/u` 半页、`Ctrl+f/b` 整页、`/` 搜索、
+`n`/`N` 跳结果、`Ctrl+w` 切窗格。正文默认只占中间一页（最多 26 行）并垂直居中，
+按 `f` 才铺满整屏。完整键位见 [docs/UI.md](docs/UI.md) §8。
 
 依赖的唯一事实来源是 `pyproject.toml`，`uv.lock` 是锁定的解析结果；
 `requirements.txt` 由 `uv export` 生成，只在需要 pip 环境时用。
@@ -51,6 +55,29 @@ uv run pytest -q             # 跑测试
 | `LECTOR_TTS_ENGINE` | `edge` | `edge` / `espeak` / `auto` |
 | `LECTOR_VOICE` | `zh-CN-XiaoxiaoNeural` | 默认音色 |
 | `LECTOR_MAX_UPLOAD` | `52428800` | 上传上限（字节） |
+
+## 线上部署与终端接入
+
+服务要放到公网上，**必须设置 `LECTOR_TOKEN`** —— 未设置令牌时服务端只监听
+`127.0.0.1`，不会对外暴露；令牌同时也是终端端的接入凭证。
+
+```bash
+# 服务端
+export LECTOR_TOKEN="$(openssl rand -hex 24)"
+export LECTOR_HOST=127.0.0.1     # 交给反向代理
+uv run lector-server
+```
+
+前面放一层 Caddy / nginx 负责 TLS，服务只监听回环地址即可。终端端用同一个
+令牌接入：
+
+```bash
+# 一次性：环境变量
+LECTOR_URL=https://reader.example.com LECTOR_TOKEN=xxx uv run lector
+
+# 或者启动后按 c 交互式填写地址与令牌，记在 ~/.config/lector/reader.json
+uv run lector
+```
 
 ## 跨端接力
 

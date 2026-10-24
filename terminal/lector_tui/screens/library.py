@@ -19,6 +19,7 @@ class LibraryScreen(Screen):
         Binding("u", "upload", "上传"),
         Binding("d", "delete", "删除"),
         Binding("r", "refresh", "刷新"),
+        Binding("c", "connect", "连接"),
         Binding("q", "quit", "退出"),
     ]
 
@@ -29,13 +30,25 @@ class LibraryScreen(Screen):
     def compose(self) -> ComposeResult:
         with Vertical():
             yield Static("  Lector  书架", id="shelf-title")
+            yield Static("", id="shelf-server")
             yield ListView(id="library-list")
             yield Input(placeholder="上传本地 EPUB 的路径…", id="upload-input")
+            yield Input(placeholder="服务器地址，例如 https://reader.example.com", id="connect-url")
+            yield Input(placeholder="访问令牌（没有就留空）", id="connect-token")
             yield Footer()
 
     def on_mount(self) -> None:
         self.query_one("#upload-input").display = False
+        self.query_one("#connect-url").display = False
+        self.query_one("#connect-token").display = False
+        self.show_server()
         self.refresh_books()
+
+    def show_server(self) -> None:
+        """Show which server the shelf is talking to."""
+        self.query_one("#shelf-server", Static).update(
+            f"  {self.app.config.describe()}"
+        )
 
     # -- data ------------------------------------------------------------
     def refresh_books(self) -> None:
@@ -70,6 +83,16 @@ class LibraryScreen(Screen):
         book = self._books[index]
         self.app.push_screen(ReaderScreen(book["book_id"]))
 
+    def action_connect(self) -> None:
+        """Ask for the address of the server and the access token."""
+        url_input = self.query_one("#connect-url", Input)
+        token_input = self.query_one("#connect-token", Input)
+        url_input.display = True
+        token_input.display = True
+        url_input.value = self.app.config.url
+        token_input.value = self.app.config.token
+        url_input.focus()
+
     def action_upload(self) -> None:
         """Ask for the path of a local EPUB."""
         upload = self.query_one("#upload-input")
@@ -100,6 +123,21 @@ class LibraryScreen(Screen):
         self.action_open()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "connect-url":
+            self.query_one("#connect-token", Input).focus()
+            return
+        if event.input.id == "connect-token":
+            url = self.query_one("#connect-url", Input).value.strip().rstrip("/")
+            token = self.query_one("#connect-token", Input).value.strip()
+            for field in ("#connect-url", "#connect-token"):
+                self.query_one(field, Input).display = False
+            if not url:
+                return
+            self.app.connect_to(url, token)
+            self.show_server()
+            self.notify(f"已连接到 {url}", title="连接")
+            self.refresh_books()
+            return
         path = event.value.strip().strip('"')
         upload = self.query_one("#upload-input")
         upload.display = False

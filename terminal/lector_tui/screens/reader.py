@@ -14,7 +14,8 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
-from textual.widgets import Footer, ListItem, ListView, Static
+from textual.events import Key
+from textual.widgets import Footer, Input, ListItem, ListView, Static
 
 #: How many columns the directory takes.
 TOC_WIDTH = 30
@@ -156,13 +157,38 @@ class BaseReaderScreen(Screen):
     """Shared behaviour of the reading and the listening screen."""
 
     BINDINGS = [
+        # vim 的方向键：h/l 换句，j/k 滚行
+        Binding("h", "previous_sentence", "上一句"),
+        Binding("l", "next_sentence", "下一句"),
+        Binding("j", "scroll_down", "下滚一行"),
+        Binding("k", "scroll_up", "上滚一行"),
         Binding("left", "previous_sentence", "上一句"),
         Binding("right", "next_sentence", "下一句"),
+        Binding("down", "scroll_down", "下滚一行"),
+        Binding("up", "scroll_up", "上滚一行"),
+        # vim 的翻页
+        Binding("ctrl+d", "half_page_down", "下半页"),
+        Binding("ctrl+u", "half_page_up", "上半页"),
+        Binding("ctrl+f", "page_down", "下翻一页"),
+        Binding("ctrl+b", "page_up", "上翻一页"),
+        Binding("ctrl+e", "scroll_down", "下滚一行"),
+        Binding("ctrl+y", "scroll_up", "上滚一行"),
+        Binding("H", "screen_top", "屏幕顶"),
+        Binding("M", "screen_middle", "屏幕中"),
+        Binding("L", "screen_bottom", "屏幕底"),
+        Binding("z", "center", "居中"),
+        # vim 的跳转
+        Binding("g", "chapter_start", "章首"),
         Binding("bracketleft", "previous_chapter", "上一章"),
         Binding("bracketright", "next_chapter", "下一章"),
-        Binding("g", "chapter_start", "章首"),
         Binding("G", "chapter_end", "章末"),
+        # vim 的搜索
+        Binding("slash", "search", "搜索"),
+        Binding("n", "next_hit", "下一处"),
+        Binding("N", "previous_hit", "上一处"),
+        # 其余
         Binding("tab", "focus_toc", "目录"),
+        Binding("ctrl+w", "switch_pane", "切换窗格"),
         Binding("s", "push_progress", "同步进度"),
         Binding("S", "pull_progress", "拉取进度"),
         Binding("q", "back", "返回"),
@@ -180,17 +206,23 @@ class BaseReaderScreen(Screen):
         self.sentence_index = 0
         self.cursor: dict | None = None
         self._push_timer = None
+        self._hits: list[dict] = []
+        self._hit_index = -1
+        self._pane_mode = "toc"
 
     # -- layout ----------------------------------------------------------
     def compose(self) -> ComposeResult:
         with Vertical():
             with Horizontal(id="reader-body"):
                 yield ListView(id="toc-pane")
-                yield VerticalScroll(ChapterText(), id="text-pane")
+                with Vertical(id="text-area"):
+                    yield VerticalScroll(ChapterText(), id="text-pane")
+            yield Input(placeholder="搜索全书…（回车确认，Esc 取消）", id="search-input")
             yield Static("", id="status-bar")
             yield Footer()
 
     def on_mount(self) -> None:
+        self.query_one("#search-input").display = False
         self.load_book()
 
     # -- data ------------------------------------------------------------
@@ -284,14 +316,18 @@ class BaseReaderScreen(Screen):
         self.update_status()
         self.schedule_push()
 
-    def scroll_to_cursor(self) -> None:
+    def scroll_to_cursor(self, center: bool = False) -> None:
         """Keep the current sentence visible."""
         pane = self.query_one("#text-pane", VerticalScroll)
         # Count the lines before the current sentence to scroll roughly there.
         offset = 0
         for sentence in self.sentences[: self.sentence_index]:
             offset += max(1, len(sentence["text"]) // 60 + 1)
-        pane.scroll_to(y=max(0, offset - 3), animate=False)
+        if center:
+            offset = max(0, offset - self._page_size() // 2)
+        else:
+            offset = max(0, offset - 3)
+        pane.scroll_to(y=offset, animate=False)
 
     def update_status(self) -> None:
         """The status line at the bottom."""
@@ -305,6 +341,67 @@ class BaseReaderScreen(Screen):
         )
 
     # -- actions ---------------------------------------------------------
+    # -- 滚动与定位 ------------------------------------------------------
+    def action_scroll_down(self) -> None:
+        """One line down, the way vim scrolls."""
+        self.query_one("#text-pane", VerticalScroll).scroll_down(animate=False)
+
+    def action_scroll_up(self) -> None:
+        """One line up."""
+        self.query_one("#text-pane", VerticalScroll).scroll_up(animate=False)
+
+    def action_half_page_down(self) -> None:
+        """Ctrl+d — half a page down."""
+        self._scroll_by(self._page_size() // 2)
+
+    def action_half_page_up(self) -> None:
+        """Ctrl+u — half a page up."""
+        self._scroll_by(-(self._page_size() // 2))
+
+    def action_page_down(self) -> None:
+        """Ctrl+f — a full page down."""
+        self._scroll_by(self._page_size())
+
+    def action_page_up(self) -> None:
+        """Ctrl+b — a full page up."""
+        self._scroll_by(-self._page_size())
+
+    def _scroll_by(self, lines: int) -> None:
+        """Scroll the text pane by a number of lines."""
+        pane = self.query_one("#text-pane", VerticalScroll)
+        target = pane.scroll_offset.y + lines
+        pane.scroll_to(y=max(0, min(pane.max_scroll_y, target)), animate=False)
+
+    def _page_size(self) -> int:
+        """How many lines fit on the page."""
+        try:
+            return max(1, self.query_one("#text-pane", VerticalScroll).size.height)
+        except Exception:  # noqa: BLE001
+            return 20
+
+    def action_screen_top(self) -> None:
+        self.query_one("#text-pane", VerticalScroll).scroll_to(y=0, animate=False)
+
+    def action_screen_bottom(self) -> None:
+        pane = self.query_one("#text-pane", VerticalScroll)
+        pane.scroll_to(y=pane.max_scroll_y, animate=False)
+
+    def action_screen_middle(self) -> None:
+        pane = self.query_one("#text-pane", VerticalScroll)
+        pane.scroll_to(y=max(0, pane.max_scroll_y // 2), animate=False)
+
+    def action_center(self) -> None:
+        """Put the current sentence in the middle of the page."""
+        self.scroll_to_cursor(center=True)
+
+    def action_switch_pane(self) -> None:
+        """Move the focus between the directory and the text."""
+        toc = self.query_one("#toc-pane", ListView)
+        if toc.has_focus:
+            self.query_one("#text-pane", VerticalScroll).focus()
+        else:
+            toc.focus()
+
     def action_previous_sentence(self) -> None:
         self.set_cursor(self.sentence_index - 1)
         self.after_sentence_change()
@@ -341,6 +438,80 @@ class BaseReaderScreen(Screen):
 
     def action_focus_toc(self) -> None:
         self.query_one("#toc-pane", ListView).focus()
+
+    def toggle_fullscreen(self) -> None:
+        """Show the text in the whole screen, or shrink it back to one page."""
+        self.set_class(not self.has_class("fullscreen"), "fullscreen")
+
+    # -- 搜索 ------------------------------------------------------------
+    def action_search(self) -> None:
+        """Open the search prompt, the way vim does."""
+        field = self.query_one("#search-input", Input)
+        field.display = True
+        field.focus()
+
+    def action_next_hit(self) -> None:
+        """Jump to the next search hit."""
+        if not self._hits:
+            return
+        self._hit_index = (self._hit_index + 1) % len(self._hits)
+        self.goto_hit(self._hits[self._hit_index])
+
+    def action_previous_hit(self) -> None:
+        """Jump to the previous search hit."""
+        if not self._hits:
+            return
+        self._hit_index = (self._hit_index - 1) % len(self._hits)
+        self.goto_hit(self._hits[self._hit_index])
+
+    def goto_hit(self, hit: dict) -> None:
+        """Move to a search hit."""
+        chapter_id = hit.get("chapter_id")
+        sentence_id = hit.get("sentence_id")
+        if not chapter_id or not sentence_id:
+            return
+        if chapter_id != (self.chapter or {}).get("chapter_id"):
+            self.load_chapter(chapter_id, sentence_id)
+            return
+        for position, sentence in enumerate(self.sentences):
+            if sentence["id"] == sentence_id:
+                self.set_cursor(position)
+                break
+        self.after_sentence_change()
+
+    def run_search(self, query: str) -> None:
+        """Search the book and show the hits in the directory pane."""
+        if not query or not self.book_id:
+            return
+        try:
+            payload = self.app.api.search(self.book_id, query, 50)
+        except Exception as exc:  # noqa: BLE001
+            self.notify(f"搜索失败：{exc}", title="错误", severity="error")
+            return
+        self._hits = payload.get("results", [])
+        self._hit_index = -1
+        self._pane_mode = "search"
+        listing = self.query_one("#toc-pane", ListView)
+        listing.clear()
+        if not self._hits:
+            listing.append(ListItem(Static("（没有找到）")))
+        for hit in self._hits:
+            snippet = hit.get("snippet", "").replace("<em>", "").replace("</em>", "")
+            listing.append(
+                ListItem(
+                    Static(
+                        f"{hit.get('chapter_title', '')}\n{snippet[:60]}"
+                    )
+                )
+            )
+        listing.index = 0
+        self.notify(f"找到 {payload.get('total', 0)} 处，按 n 逐个跳转", title="搜索")
+
+    def restore_toc(self) -> None:
+        """Put the directory back after a search."""
+        self._pane_mode = "toc"
+        self._hits = []
+        self.render_toc()
 
     def action_back(self) -> None:
         self.app.pop_screen()
@@ -396,10 +567,49 @@ class BaseReaderScreen(Screen):
         self.notify("已拉取服务器进度", title="进度")
 
     # -- events ----------------------------------------------------------
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """The search prompt was confirmed."""
+        field = self.query_one("#search-input", Input)
+        query = event.value.strip()
+        field.display = False
+        field.value = ""
+        if query:
+            self.run_search(query)
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """The user emptied the search box: the directory comes back.
+
+        The check on ``display`` keeps the program from undoing its own
+        results — after a search the box is hidden and cleared, and that must
+        not wipe the hits that were just found.
+        """
+        if (
+            event.input.id == "search-input"
+            and event.value.strip() == ""
+            and event.input.display
+        ):
+            self.restore_toc()
+
+    def on_key(self, event: Key) -> None:
+        """Escape leaves the search prompt."""
+        if event.key == "escape" and self.query_one("#search-input", Input).display:
+            field = self.query_one("#search-input", Input)
+            field.display = False
+            field.value = ""
+            self.restore_toc()
+            event.stop()
+
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         """Jump to the directory entry that was selected."""
         index = event.list_view.index
-        if index is None or index >= len(self.toc_flat):
+        if index is None:
+            return
+        if self._pane_mode == "search":
+            if 0 <= index < len(self._hits):
+                self._hit_index = index
+                self.goto_hit(self._hits[index])
+            return
+        if index >= len(self.toc_flat):
             return
         node, _ = self.toc_flat[index]
         chapter_id = node.get("chapter_id")
@@ -461,12 +671,15 @@ class ListenScreen(BaseReaderScreen):
         with Vertical():
             with Horizontal(id="reader-body"):
                 yield ListView(id="toc-pane")
-                yield VerticalScroll(ChapterText(), id="text-pane")
+                with Vertical(id="text-area"):
+                    yield VerticalScroll(ChapterText(), id="text-pane")
+            yield Input(placeholder="搜索全书…（回车确认，Esc 取消）", id="search-input")
             yield Static("", id="audio-panel")
             yield Static("", id="status-bar")
             yield Footer()
 
     def on_mount(self) -> None:
+        self.query_one("#search-input").display = False
         self.load_book()
         if self.start_chapter and self.chapter and self.chapter.get("chapter_id") != self.start_chapter:
             self.load_chapter(self.start_chapter)

@@ -200,3 +200,108 @@ def test_terminal_pulls_the_progress(server, epub2_bytes: bytes):
             assert app.screen.cursor["sentence_id"] == target
 
     asyncio.run(scenario())
+
+
+def test_vim_keys_move_the_cursor(server, epub2_bytes: bytes):
+    """``h`` and ``l`` move the cursor the way vim moves the cursor."""
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "terminal"))
+    from lector_tui.app import LectorApp
+
+    import httpx
+
+    httpx.post(
+        f"{server}/api/v1/books",
+        files={"file": ("book.epub", epub2_bytes, "application/epub+zip")},
+    )
+
+    async def scenario():
+        app = LectorApp(base_url=server)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("enter")
+            await pilot.pause()
+            first = app.screen.cursor["sentence_id"]
+            await pilot.press("l")
+            await pilot.pause()
+            second = app.screen.cursor["sentence_id"]
+            assert second != first
+            await pilot.press("h")
+            await pilot.pause()
+            assert app.screen.cursor["sentence_id"] == first
+
+    asyncio.run(scenario())
+
+
+def test_fullscreen_toggles_the_text_pane(server, epub2_bytes: bytes):
+    """``f`` expands the text to the whole screen and back."""
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "terminal"))
+    from lector_tui.app import LectorApp
+
+    import httpx
+
+    httpx.post(
+        f"{server}/api/v1/books",
+        files={"file": ("book.epub", epub2_bytes, "application/epub+zip")},
+    )
+
+    async def scenario():
+        app = LectorApp(base_url=server)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("enter")
+            await pilot.pause()
+            assert not app.screen.has_class("fullscreen")
+            await pilot.press("f")
+            await pilot.pause()
+            assert app.screen.has_class("fullscreen")
+            await pilot.press("f")
+            await pilot.pause()
+            assert not app.screen.has_class("fullscreen")
+
+    asyncio.run(scenario())
+
+
+def test_search_finds_and_jumps(server, epub2_bytes: bytes):
+    """``/`` searches the book and the hits land in the directory pane."""
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "terminal"))
+    from lector_tui.app import LectorApp
+
+    import httpx
+
+    httpx.post(
+        f"{server}/api/v1/books",
+        files={"file": ("book.epub", epub2_bytes, "application/epub+zip")},
+    )
+
+    async def scenario():
+        app = LectorApp(base_url=server)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("enter")
+            await pilot.pause()
+            await pilot.press("/")
+            await pilot.pause()
+            assert app.screen.query_one("#search-input").display
+            app.screen.query_one("#search-input").value = "玫瑰"
+            await pilot.pause()
+            await pilot.press("enter")
+            await pilot.pause()
+            assert app.screen._hits
+            target = app.screen._hits[0]["sentence_id"]
+            await pilot.press("n")
+            await pilot.pause()
+            assert app.screen.cursor["sentence_id"] in {
+                hit["sentence_id"] for hit in app.screen._hits
+            }
+            assert target
+
+    asyncio.run(scenario())

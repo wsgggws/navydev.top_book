@@ -182,6 +182,12 @@ def main() -> None:
     import uvicorn
 
     settings = load_settings()
+    if not settings.token and settings.host not in ("127.0.0.1", "localhost", "::1"):
+        logger.warning(
+            "LECTOR_TOKEN 未设置，服务将向 %s 开放且任何人都能读写全部书籍。"
+            "线上部署请务必设置令牌，或把 LECTOR_HOST 收回 127.0.0.1 并交给反向代理。",
+            settings.host,
+        )
     uvicorn.run(
         "lector.web:app",
         host=settings.host,
