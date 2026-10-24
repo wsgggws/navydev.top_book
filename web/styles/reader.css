@@ -1,0 +1,123 @@
+/* 阅读列、游标线与逐词高亮 */
+
+.reader-scroll {
+  height: 100%;
+  overflow-y: auto;
+  scroll-behavior: auto;
+}
+
+.column {
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding: var(--sp-8) var(--sp-6) calc(var(--player-h) + 25vh);
+  font-family: var(--font-serif);
+  font-size: var(--font-size);
+  line-height: var(--line-height);
+  letter-spacing: var(--letter-spacing);
+  word-spacing: var(--word-spacing);
+  color: var(--text);
+}
+
+.column h1, .column h2, .column h3,
+.column h4, .column h5, .column h6 {
+  font-family: var(--font-sans);
+  line-height: 1.4;
+  margin: 1.6em 0 0.7em;
+  font-weight: 600;
+}
+
+.column h1 { font-size: 1.5em; }
+.column h2 { font-size: 1.32em; }
+.column h3 { font-size: 1.16em; }
+.column h4, .column h5, .column h6 { font-size: 1.04em; }
+
+.column p {
+  margin: 0 0 var(--para-spacing);
+  text-indent: var(--indent);
+}
+
+.column li {
+  margin-bottom: calc(var(--para-spacing) * .6);
+}
+
+.column blockquote {
+  margin: 0 0 var(--para-spacing);
+  padding-left: var(--sp-4);
+  border-left: 2px solid var(--border);
+  color: var(--text-dim);
+}
+
+.column pre {
+  font-family: var(--font-mono);
+  font-size: .82em;
+  white-space: pre-wrap;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--sp-3);
+  margin: 0 0 var(--para-spacing);
+}
+
+.column hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: var(--sp-6) 0;
+}
+
+.column figure { margin: 0 0 var(--para-spacing); }
+.column img {
+  max-width: 100%;
+  border-radius: var(--radius);
+  display: block;
+}
+
+/* ---- 游标线：全书唯一的高饱和元素 ---- */
+.sent {
+  transition: background-color var(--dur-cursor) var(--ease-out);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.sent.is-current {
+  background: var(--accent-soft);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* ---- 逐词高亮 ---- */
+.w {
+  border-radius: 2px;
+  transition: background-color var(--dur-word) linear;
+}
+
+.w.is-read { background: var(--spoken); }
+.w.is-now {
+  background: var(--highlight);
+  font-weight: 600;
+}
+
+/* 句子级回退：没有词边界时整句点亮 */
+.sent.is-speaking { background: var(--accent-soft); }
+
+/* ---- 阅读态与听书态的差异 ---- */
+body.is-playing .column { cursor: default; }
+
+.chapter-title {
+  font-family: var(--font-sans);
+  font-size: 1.1em;
+  color: var(--text-dim);
+  margin-bottom: var(--sp-6);
+  padding-bottom: var(--sp-3);
+  border-bottom: 1px solid var(--border);
+}
+
+/* ---- 悬浮进度提示 ---- */
+.sent:hover { background: var(--accent-soft); }
+
+@media (max-width: 639px) {
+  .column { padding: var(--sp-5) var(--sp-4) calc(var(--player-h) + 30vh); }
+}
+
+.chapter-empty {
+  color: var(--text-faint);
+  font-style: italic;
+}

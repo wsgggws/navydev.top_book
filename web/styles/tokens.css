@@ -1,0 +1,120 @@
+/* Design tokens.
+ *
+ * The three themes only swap colours; spacing, type scale and motion are
+ * shared so that switching a theme never changes the rhythm of the page.
+ */
+
+:root {
+  /* Type */
+  --font-serif: "Songti SC", "SimSun", "Noto Serif CJK SC", "Source Han Serif SC", Georgia, serif;
+  --font-sans: -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+
+  --font-size: 18px;
+  --line-height: 1.9;
+  --letter-spacing: 0.01em;
+  --para-spacing: 0.9em;
+  --indent: 0em;
+  --measure: var(--measure-user, 36em);
+  --word-spacing: 0.02em;
+
+  /* Spacing — 4px base */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-7: 32px;
+  --sp-8: 64px;
+
+  /* Motion */
+  --dur-cursor: 180ms;
+  --dur-theme: 200ms;
+  --dur-drawer: 220ms;
+  --dur-jump: 300ms;
+  --dur-word: 90ms;
+  --ease-out: cubic-bezier(.4, 0, .2, 1);
+  --ease-drawer: cubic-bezier(.32, .72, 0, 1);
+
+  /* Structure */
+  --topbar-h: 48px;
+  --drawer-w: 280px;
+  --player-h: 56px;
+  --reading-band: 30%;
+
+  --radius: 6px;
+  --radius-lg: 10px;
+}
+
+/* 纸白 */
+:root, [data-theme="paper"] {
+  --bg: #faf9f6;
+  --surface: #ffffff;
+  --text: #23201c;
+  --text-dim: #6b655c;
+  --text-faint: #a49d92;
+  --border: #e6e2da;
+  --accent: #c8791f;
+  --accent-soft: rgba(200, 121, 31, .10);
+  --spoken: #f2e3cc;
+  --highlight: rgba(200, 121, 31, .28);
+  --shadow: 0 1px 2px rgba(35, 32, 28, .06), 0 8px 24px rgba(35, 32, 28, .08);
+}
+
+/* 羊皮 */
+[data-theme="sepia"] {
+  --bg: #f4ecd8;
+  --surface: #faf3e0;
+  --text: #3a3226;
+  --text-dim: #7a6f5c;
+  --text-faint: #a89c86;
+  --border: #e0d4b4;
+  --accent: #b06a12;
+  --accent-soft: rgba(176, 106, 18, .12);
+  --spoken: #ecdcbb;
+  --highlight: rgba(176, 106, 18, .30);
+  --shadow: 0 1px 2px rgba(58, 50, 38, .08), 0 8px 24px rgba(58, 50, 38, .10);
+}
+
+/* 夜间 */
+[data-theme="night"] {
+  --bg: #16181c;
+  --surface: #1e2126;
+  --text: #d8d5cf;
+  --text-dim: #8b8781;
+  --text-faint: #5f5c58;
+  --border: #2a2e34;
+  --accent: #e0a054;
+  --accent-soft: rgba(224, 160, 84, .14);
+  --spoken: #33302b;
+  --highlight: rgba(224, 160, 84, .32);
+  --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .5);
+}
+
+/* 跟随系统：只在用户没有明确选择时生效 */
+@media (prefers-color-scheme: dark) {
+  [data-theme="auto"] {
+    --bg: #16181c;
+    --surface: #1e2126;
+    --text: #d8d5cf;
+    --text-dim: #8b8781;
+    --text-faint: #5f5c58;
+    --border: #2a2e34;
+    --accent: #e0a054;
+    --accent-soft: rgba(224, 160, 84, .14);
+    --spoken: #33302b;
+    --highlight: rgba(224, 160, 84, .32);
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .5);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-cursor: 0ms;
+    --dur-theme: 0ms;
+    --dur-drawer: 0ms;
+    --dur-jump: 0ms;
+    --dur-word: 0ms;
+  }
+}

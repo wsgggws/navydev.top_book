@@ -1,0 +1,107 @@
+/* 听书条 */
+
+.player {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--player-h);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 0 var(--sp-3);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  z-index: 25;
+}
+
+.player-left { display: flex; align-items: center; gap: var(--sp-1); }
+
+.player-mid {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.player-title {
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.player-bar {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.player-bar-fill {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width 200ms linear;
+}
+
+.player-right {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.player-time {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.player-status {
+  position: absolute;
+  right: var(--sp-3);
+  bottom: calc(100% + 2px);
+  padding: 2px var(--sp-2);
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.player-status:empty { display: none; }
+
+.player-status .dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+/* 跟随时的小圆点提示 */
+#btn-follow .dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-left: 3px;
+  vertical-align: middle;
+}
+#btn-follow .dot[hidden] { display: none; }
+
+@media (max-width: 639px) {
+  .player { gap: var(--sp-2); padding: 0 var(--sp-2); }
+  .player-time, #btn-voice { display: none; }
+}
+
+/* 跟随按钮：暂停时用一个小圆点提示当前句已经离屏 */
+#btn-follow.is-active { color: var(--accent); }
+#btn-follow:not(.is-active) { color: var(--text-faint); }
