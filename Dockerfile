@@ -2,9 +2,12 @@
 FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/python:3.12-slim AS builder
 
 ENV UV_COMPILE_BYTECODE=1 \
-    UV_LINK_MODE=copy
+    UV_LINK_MODE=copy \
+    UV_DEFAULT_INDEX=https://repo.huaweicloud.com/repository/pypi/simple
 
-RUN pip install --no-cache-dir uv
+RUN pip install --no-cache-dir \
+    --index-url https://repo.huaweicloud.com/repository/pypi/simple \
+    uv==0.13.5
 
 WORKDIR /app
 
@@ -24,10 +27,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     LECTOR_HOST=0.0.0.0 \
     LECTOR_PORT=8010 \
     LECTOR_BASE_PATH=/book
-
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
