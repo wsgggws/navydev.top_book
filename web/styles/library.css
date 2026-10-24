@@ -6,16 +6,43 @@
 
 .library-head {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  align-items: flex-start;
   margin-bottom: var(--sp-6);
   max-width: 1100px;
   margin-inline: auto;
 }
 
+.library-heading {
+  max-width: 44rem;
+}
+
 .library-head h1 {
+  margin: 0 0 var(--sp-2);
   font-size: 20px;
   letter-spacing: .04em;
+}
+
+.library-tagline {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.library-features {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+}
+
+.library-features span {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+  letter-spacing: .03em;
 }
 
 .library-grid {
@@ -125,5 +152,7 @@
 
 @media (max-width: 639px) {
   .library { padding: var(--sp-5) var(--sp-4) var(--sp-8); }
+  .library-tagline { font-size: 12px; }
+  .library-features { margin-top: var(--sp-2); }
   .grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: var(--sp-5) var(--sp-4); }
 }

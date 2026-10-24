@@ -283,7 +283,10 @@ def test_repository_books_are_imported_and_public(tmp_path, epub2_bytes: bytes):
     assert len(books.json()) == 1
     assert books.json()[0]["title"] == "Test Book"
     assert books.json()[0]["author"] == "Alice"
-    assert "btn-import" not in client.get("/").text
+    page = client.get("/").text
+    assert "戴上耳朵读：声音读到哪里，文字就亮到哪里。" in page
+    assert "逐词高亮" in page
+    assert "btn-import" not in page
 
     # Same bytes, renamed file: filename metadata updates the existing book.
     (library / "Test Book (Alice).epub").rename(library / "新书名（新作者）.epub")
