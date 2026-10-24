@@ -21,6 +21,7 @@ from lector.api.deps import AppContext, RateLimiter, require_auth
 from lector.api.errors import ApiError
 from lector.config import (
     APP_VERSION,
+    DEFAULT_VOICE_BY_LOCALE,
     FEATURED_VOICES,
     PARSER_VERSION,
     Settings,
@@ -150,6 +151,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "parser_version": PARSER_VERSION,
             "default_voice": settings.default_voice,
             "featured_voices": list(FEATURED_VOICES),
+            "default_voices": dict(DEFAULT_VOICE_BY_LOCALE),
         }
 
     web_dir = Path(settings.web_dir)

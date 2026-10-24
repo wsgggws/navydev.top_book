@@ -200,11 +200,13 @@ uv run lector
   "version": "1.0.0",
   "parser_version": 1,
   "default_voice": "zh-CN-XiaoxiaoNeural",
-  "featured_voices": ["zh-CN-XiaoxiaoNeural", "en-US-AriaNeural"]
+  "featured_voices": ["zh-CN-XiaoxiaoNeural", "en-US-AriaNeural"],
+  "default_voices": { "zh": "zh-CN-XiaoxiaoNeural", "en": "en-US-GuyNeural" }
 }
 ```
 
 - `featured_voices` 是**界面上应当提供的常用音色**：中文（zh-CN）、美式（en-US）、英式（en-GB）各若干。引擎本身还有三百多个音色，`/tts/voices` 全部返回，客户端按需自选。
+- `default_voices` 是**按语言分的默认音色**：书是什么语言就用什么声音读，中文书用中文，英文书用美式男声。客户端不要自己猜，按这份表来。
 
 ### `GET /api/v1/tts/voices`
 

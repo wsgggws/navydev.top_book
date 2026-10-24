@@ -53,9 +53,35 @@ export class ReaderView {
       this.column.append(el('p', { class: 'chapter-empty', text: '本章没有文字内容。' }));
       return;
     }
-    for (const block of chapter.blocks) {
+    const blocks = this.withoutRepeatedTitle(chapter);
+    for (let index = 0; index < blocks.length; index += 1) {
+      const block = blocks[index];
+      if (block.type === 'li') {
+        // 列表项要放进同一个列表里，否则项目符号会跑到行外。
+        const items = [block];
+        while (index + 1 < blocks.length && blocks[index + 1].type === 'li') {
+          index += 1;
+          items.push(blocks[index]);
+        }
+        const list = el('ul', { class: 'blk-list' });
+        for (const item of items) list.append(this.renderBlock(item));
+        this.column.append(list);
+        continue;
+      }
       this.column.append(this.renderBlock(block));
     }
+  }
+
+  /** A heading that repeats the chapter title is shown only once. */
+  withoutRepeatedTitle(chapter) {
+    const blocks = chapter.blocks || [];
+    const first = blocks[0];
+    if (!first) return blocks;
+    const isHeading = /^h[1-6]$/.test(first.type);
+    if (!isHeading) return blocks;
+    const text = (first.sentences || []).map((sentence) => sentence.text).join('').trim();
+    if (text && text !== (chapter.title || '').trim()) return blocks;
+    return blocks.slice(1);
   }
 
   renderBlock(block) {

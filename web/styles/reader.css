@@ -114,7 +114,16 @@ body.is-playing .column { cursor: default; }
 .sent:hover { background: var(--accent-soft); }
 
 @media (max-width: 639px) {
-  .column { padding: var(--sp-5) var(--sp-4) calc(var(--player-h) + 30vh); }
+  .column {
+    padding: var(--sp-4) var(--sp-4) calc(var(--player-h) + 24vh);
+  }
+  .chapter-title {
+    font-size: 1em;
+    margin-bottom: var(--sp-4);
+    padding-bottom: var(--sp-2);
+  }
+  /* 手机上正文居中太窄，单列满宽更舒服 */
+  .column p { text-indent: 0; }
 }
 
 .chapter-empty {

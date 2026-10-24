@@ -104,13 +104,32 @@ class ChapterText(Static):
         now_style = self._style("word-now")
         text.append(f"{self.chapter.get('title', '')}\n", style=title_style)
         text.append("\n")
-        for block in self.chapter.get("blocks", []):
+        blocks = self._without_repeated_title()
+        index = 0
+        while index < len(blocks):
+            block = blocks[index]
             if block.get("type") == "img":
                 if block.get("alt"):
                     text.append(f"[图：{block['alt']}]\n", style=Style(dim=True))
+                index += 1
                 continue
             if block.get("type") == "hr":
                 text.append("─" * 40 + "\n")
+                index += 1
+                continue
+            if block.get("type") == "li":
+                # 列表项成组输出，项目符号才不会跑到行外。
+                while index < len(blocks) and blocks[index].get("type") == "li":
+                    for sentence in blocks[index].get("sentences", []):
+                        text.append("  • ", style=Style(dim=True))
+                        if sentence["id"] == self.current_sentence:
+                            self._append_sentence(
+                                text, sentence, current_style, read_style, now_style
+                            )
+                        else:
+                            text.append(sentence["text"])
+                    index += 1
+                text.append("\n")
                 continue
             heading = Style(bold=True) if block.get("type", "p").startswith("h") else Style()
             for sentence in block.get("sentences", []):
@@ -119,7 +138,24 @@ class ChapterText(Static):
                 else:
                     text.append(sentence["text"], style=heading)
             text.append("\n")
+            index += 1
         return text
+
+    def _without_repeated_title(self) -> list[dict]:
+        """The chapter title is already on top — do not repeat it."""
+        blocks = list(self.chapter.get("blocks", [])) if self.chapter else []
+        if not blocks:
+            return blocks
+        first = blocks[0]
+        if not str(first.get("type", "")).startswith("h"):
+            return blocks
+        text = "".join(
+            sentence.get("text", "") for sentence in first.get("sentences", [])
+        ).strip()
+        title = str((self.chapter or {}).get("title", "")).strip()
+        if text and text != title:
+            return blocks
+        return blocks[1:]
 
     def _append_sentence(
         self,

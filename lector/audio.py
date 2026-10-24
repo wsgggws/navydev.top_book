@@ -11,7 +11,7 @@ import asyncio
 import time
 from dataclasses import dataclass
 
-from lector.config import FEATURED_VOICES, Settings
+from lector.config import DEFAULT_VOICE_BY_LOCALE, FEATURED_VOICES, Settings
 from lector.store import Store
 from lector.tts.base import TTSEngine, TTSUnavailable, Voice
 from lector.tts.cache import AudioCache, CachedTile, cache_key
@@ -63,9 +63,10 @@ class AudioService:
     async def choose_voice(self, language: str | None, preferred: str | None) -> str:
         """Pick the voice a book should be read with.
 
-        An explicitly chosen voice always wins.  Otherwise a voice whose locale
-        matches the book language is preferred, so an English book is not read
-        by a Chinese voice just because that is the server default.
+        An explicitly chosen voice always wins.  Otherwise the book's language
+        decides: a Chinese book is read in Chinese, an English book in
+        American English, and the locale's default voice is used when the
+        engine knows one.
         """
         if preferred:
             return preferred
@@ -73,12 +74,14 @@ class AudioService:
         if not language:
             return fallback
         prefix = language.split("-")[0].lower()
+        wanted = DEFAULT_VOICE_BY_LOCALE.get(prefix)
         try:
             voices = await self.voices()
         except TTSUnavailable:
-            return fallback
-        if fallback.split("-")[0].lower() == prefix:
-            return fallback
+            return wanted or fallback
+        available = {voice.voice_id for voice in voices}
+        if wanted and wanted in available:
+            return wanted
         # 常用音色优先，其次是引擎里任何同语言的声音。
         featured = [v for v in voices if v.voice_id in FEATURED_VOICES]
         for voice in featured:
@@ -87,7 +90,7 @@ class AudioService:
         for voice in voices:
             if voice.locale.split("-")[0].lower() == prefix:
                 return voice.voice_id
-        return fallback
+        return wanted or fallback
 
     # -- tiles -----------------------------------------------------------
     async def tile(

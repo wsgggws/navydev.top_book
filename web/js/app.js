@@ -186,6 +186,7 @@ settings.gap.addEventListener('input', () => {
 });
 settings.voice.addEventListener('change', () => {
   state.setSetting('voiceId', settings.voice.value);
+  state.setSetting('voiceTouched', true);
   dom.btnVoice.textContent = settings.voice.selectedOptions[0]
     ? settings.voice.selectedOptions[0].textContent
     : '—';
@@ -263,6 +264,17 @@ async function openBook(bookId) {
     dom.topbarBook.textContent = payload.book.title;
     await loadToc();
     await loadVoices();
+    // 音色跟着书的语言走：中文书用中文，英文书用美式男声。
+    if (!state.settings.voiceTouched && state.book.language) {
+      const wanted = matchVoice(state.book.language);
+      if (wanted) {
+        state.setSetting('voiceId', wanted);
+        settings.voice.value = wanted;
+        dom.btnVoice.textContent = settings.voice.selectedOptions[0]
+          ? settings.voice.selectedOptions[0].textContent
+          : '—';
+      }
+    }
     const progress = payload.progress;
     const target = progress && progress.cursor ? progress.cursor : null;
     if (target) {
@@ -811,10 +823,19 @@ async function loadVoices() {
   }
 }
 
-/** A voice whose locale matches the language of the book. */
+/**
+ * The voice for a book: the server decides, by the language of the book.
+ *
+ * Chinese books are read in Chinese, English books in American English
+ * (a male voice); the client only falls back when the server has no opinion.
+ */
 function matchVoice(language) {
   if (!language) return '';
   const prefix = language.split('-')[0].toLowerCase();
+  const byLanguage = (state.defaultVoices || {})[prefix];
+  if (byLanguage && state.voices.some((voice) => voice.voice_id === byLanguage)) {
+    return byLanguage;
+  }
   const featured = state.featuredVoices || [];
   const pool = featured.length
     ? state.voices.filter((voice) => featured.includes(voice.voice_id))
@@ -858,6 +879,7 @@ async function start() {
     const meta = await fetch('/api/v1/meta').then((response) => response.json());
     state.defaultVoice = meta.default_voice || '';
     state.featuredVoices = meta.featured_voices || [];
+    state.defaultVoices = meta.default_voices || {};
   } catch (error) {
     state.defaultVoice = '';
   }

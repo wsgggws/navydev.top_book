@@ -17,6 +17,7 @@ const DEFAULT_SETTINGS = {
   rate: 1.0,
   gap: 0,
   voiceId: '',
+  voiceTouched: false,
   follow: true,
 };
 
@@ -61,6 +62,7 @@ export const state = new (class Store extends Emitter {
     this.voices = [];
     this.defaultVoice = '';
     this.featuredVoices = [];
+    this.defaultVoices = {};
   }
 
   saveSettings() {

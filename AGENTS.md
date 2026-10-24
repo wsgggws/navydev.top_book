@@ -41,12 +41,45 @@ uv run pytest -q -k sentence        # 按名字过滤
 curl -s localhost:8000/api/v1/health | jq .
 ```
 
+以上都有对应的 make 目标（`make help` 看全部）：
+
+```bash
+make test            # uv run pytest -q
+make server          # uv run lector-server
+make dev             # 带热重载的服务端
+make terminal        # uv run lector
+make book books/some.epub   # 生成一本书，并送进服务端
+make import books/some.epub # 把已有的 EPUB 送进服务端
+```
+
 - `pyproject.toml` 是依赖的**唯一事实来源**；`uv.lock` 是锁定的解析结果，两者都要提交。
 - `requirements.txt` 是由 `uv export --format requirements-txt --no-hashes --no-emit-project --output-file requirements.txt` 生成的产物，**不要手工编辑**。只在需要 pip 环境时用它。
 - 改依赖用 `uv add <包>` / `uv remove <包>`，不要手写 `pyproject.toml` 里的版本号。
 - 新增运行时依赖仍要遵守下面的依赖白名单。
+- 构建期依赖（`hatchling`）不进运行时环境，不受白名单约束。
 
 没有 `package.json`、没有前端构建步骤、没有 lint 配置。改动靠 `pytest` 验证，靠肉眼验证界面。
+
+## 在项目里造一本书
+
+`make book books/some.epub` 把 Markdown 源变成 EPUB，并顺手送进正在跑的服务端，
+网页端立刻能看能听。
+
+源可以是单个 Markdown 文件，也可以是一个目录：
+
+```
+books/some/
+    meta.json        # {"title": …, "author": …, "language": …, "cover": "images/cover.jpg"}
+    01-开始.md       # 每个 .md 一个章节，按文件名排序
+    02-之后.md
+    images/          # 章节里引用的图片
+```
+
+- Markdown 子集很小：标题、段落、列表、引用、代码块、分隔线、图片、行内的粗/斜/代码/链接。
+- 不引第三方 Markdown 库：`lector/build.py` 自己实现，输出 EPUB2（NCX 目录），
+  生成的文件能被本项目的解析器读回来。
+- 目录节点与章节是两回事：目录节点带 `chapter_id` 与可选 `anchor`；客户端按
+  「取章节 → 按 anchor 找块 → 游标落到块首句」定位，不得拿节点 id 去请求章节端点。
 
 ## 工作流
 
@@ -85,6 +118,9 @@ curl -s localhost:8000/api/v1/health | jq .
 - **依赖白名单**：`fastapi` `uvicorn` `pydantic` `edge-tts` `textual` `pytest` `httpx` `python-multipart`。新增依赖需要能回答"标准库为什么做不到"，并在提交说明里写清。
   - `python-multipart`：`docs/API.md` §3 规定上传端点是 `multipart/form-data`，FastAPI 解析 multipart 表单强制依赖它；标准库的 `email`/`cgi` 无法被 FastAPI 直接使用（`cgi` 已在 Python 3.13 移除）。
 - **进度写入**：客户端防抖 600ms。服务端按 `updated_at` 后写入者胜。
+- **音色跟着书的语言走**：中文书默认中文（`zh-CN-XiaoxiaoNeural`），英文书默认美式男声
+  （`en-US-GuyNeural`）。映射写在 `lector/config.py` 的 `DEFAULT_VOICE_BY_LOCALE`，
+  客户端经 `GET /api/v1/meta` 的 `default_voices` 拿到同一份，不要各写一套。
 
 ## 约定
 

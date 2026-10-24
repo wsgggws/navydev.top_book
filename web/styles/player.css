@@ -105,3 +105,17 @@
 /* 跟随按钮：暂停时用一个小圆点提示当前句已经离屏 */
 #btn-follow.is-active { color: var(--accent); }
 #btn-follow:not(.is-active) { color: var(--text-faint); }
+
+/* 手机：听书条留出底部安全区，按钮够大 */
+@media (max-width: 639px) {
+  .player {
+    height: calc(var(--player-h) + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-inline: var(--sp-2);
+    gap: var(--sp-2);
+  }
+  .player .icon-btn { width: 40px; height: 40px; }
+  .player .icon-btn-primary { width: 46px; height: 46px; }
+  .player-status { bottom: calc(100% + 4px); }
+  .player-bar { height: 4px; }
+}

@@ -32,6 +32,15 @@ uv run lector                # 起终端端
 uv run pytest -q             # 跑测试
 ```
 
+或者用 make（`make help` 看全部）：
+
+```bash
+make test                    # 跑测试
+make server                  # 起服务端
+make terminal                # 起终端端
+make book books/some.epub    # 造一本书，并送进服务端
+```
+
 打开 http://localhost:8000，把 `books/` 里的 EPUB 拖进去。
 
 终端端复用同一套 API 与同一份进度，默认连 `http://127.0.0.1:8000`；
@@ -78,6 +87,37 @@ LECTOR_URL=https://reader.example.com LECTOR_TOKEN=xxx uv run lector
 # 或者启动后按 c 交互式填写地址与令牌，记在 ~/.config/lector/reader.json
 uv run lector
 ```
+
+## 在项目里造一本书
+
+`make book books/some.epub` 把 Markdown 变成 EPUB，并送进正在跑的服务端 ——
+网页端立刻能看能听，不用手动上传。
+
+源可以是单个 Markdown 文件，也可以是一个目录（每个 `.md` 一章）：
+
+```
+books/some/
+    meta.json        # {"title": …, "author": …, "language": …, "cover": "images/cover.jpg"}
+    01-开始.md
+    02-之后.md
+    images/
+```
+
+Markdown 子集很小（标题、段落、列表、引用、代码块、图片、粗/斜/行内代码/链接），
+不引第三方库：`lector/build.py` 自己实现，输出 EPUB2（带 NCX 目录），
+生成的文件能被本项目的解析器原样读回来。
+
+## 朗读音色
+
+音色跟着书的语言走：中文书默认中文（晓晓），英文书默认**美式男声**（Guy）。
+界面只列十个常用音色（中文 4、美式 4、英式 2），在设置里随时换；
+换音色会清空该书的音频缓存重新预热。
+
+## 手机上也能用
+
+网页端有专门的窄屏布局：顶栏与听书条按拇指高度设计，目录与设置是全屏抽屉，
+触摸目标不小于 44px，听书条留出底部安全区。375px 宽下正文仍是单列满宽，
+不横向溢出。
 
 ## 跨端接力
 

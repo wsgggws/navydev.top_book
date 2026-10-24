@@ -11,6 +11,10 @@ html, body {
   height: 100%;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   background: var(--bg);
   color: var(--text);
@@ -19,7 +23,13 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: manipulation;
   transition: background-color var(--dur-theme) ease, color var(--dur-theme) ease;
+}
+
+button, input, select, a {
+  -webkit-tap-highlight-color: transparent;
 }
 
 body.view-library .reader,
@@ -411,17 +421,74 @@ body.immersive .stage { inset: 0; }
 body.immersive .drawer { display: none; }
 
 /* ---- 窄屏 ---- */
+/* ---- 平板 ---- */
 @media (max-width: 1023px) {
   .drawer { box-shadow: var(--shadow); }
   /* 中等宽度：正文列比设置里的窄 4em */
   :root { --measure: calc(var(--measure-user, 36em) - 4em); }
 }
 
+/* ---- 手机 ---- */
 @media (max-width: 639px) {
   :root {
+    --topbar-h: 46px;
+    --player-h: 60px;
     --measure: 100%;
+    --font-size: 17px;
+    --para-spacing: 0.8em;
   }
-  #topbar-book, .topbar-chapter { max-width: 38vw; }
-  .drawer { width: 100%; max-width: 100%; }
-  .drawer-left, .drawer-right { padding-top: var(--topbar-h); }
+
+  /* 触摸目标至少 44px，图标本身可以小一点 */
+  .icon-btn { width: 40px; height: 40px; }
+  .icon-btn svg { width: 20px; height: 20px; }
+
+  .topbar { padding: 0 var(--sp-1); }
+  #topbar-book { font-size: 14px; max-width: 42vw; }
+  .topbar-chapter { font-size: 10px; max-width: 42vw; }
+
+  /* 抽屉全屏覆盖，连顶栏一起盖住：抽屉自己有关闭按钮 */
+  .drawer {
+    width: 100%;
+    max-width: 100%;
+    border: none;
+    padding-top: 0;
+    z-index: 60;
+  }
+  .overlay { z-index: 55; }
+  .drawer-head {
+    min-height: 54px;
+    padding: var(--sp-2) var(--sp-3);
+    gap: var(--sp-3);
+  }
+  .drawer-head h2 { font-size: 15px; }
+
+  /* 输入框用 16px，iOS 才不会自动放大页面 */
+  .search-box input { height: 40px; font-size: 16px; }
+  .toc-item {
+    padding: var(--sp-2) var(--sp-4);
+    font-size: 15px;
+    line-height: 1.45;
+  }
+  .toc-depth-1 { padding-left: var(--sp-5); }
+  .toc-depth-2 { padding-left: var(--sp-6); }
+  .toc-depth-3 { padding-left: var(--sp-7); }
+  .search-item { padding: var(--sp-3) var(--sp-4); }
+  .search-snippet { font-size: 13px; }
+
+  /* 设置项在手指下够大 */
+  .settings-group { padding: var(--sp-4); }
+  .field { font-size: 13px; margin-bottom: var(--sp-4); }
+  input[type="range"] { height: 32px; }
+  select { height: 42px; font-size: 16px; }
+  .seg button { height: 40px; font-size: 14px; }
+  .btn { height: 42px; font-size: 14px; }
+
+  .keys { font-size: 13px; }
+  .keys li { margin-bottom: var(--sp-3); }
+}
+
+/* ---- 横屏手机：把正文列收窄一点，别拉太长 ---- */
+@media (max-width: 899px) and (orientation: landscape) {
+  :root { --measure: 34em; }
+  .column { padding-top: var(--sp-5); }
 }

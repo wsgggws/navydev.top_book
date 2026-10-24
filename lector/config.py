@@ -27,6 +27,12 @@ TTS_SYNTH_TIMEOUT = 8.0
 
 DEFAULT_VOICE = "zh-CN-XiaoxiaoNeural"
 
+#: 每种语言默认读哪个音色。英文用美式男声，中文用普通话女声。
+DEFAULT_VOICE_BY_LOCALE = {
+    "zh": "zh-CN-XiaoxiaoNeural",
+    "en": "en-US-GuyNeural",
+}
+
 #: The voices the interface offers.  The engine knows three hundred of them;
 #: a reader wants a handful of familiar ones in their own language.
 FEATURED_VOICES = (
