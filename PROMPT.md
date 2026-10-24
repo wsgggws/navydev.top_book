@@ -46,7 +46,7 @@ Cursor = { book_id, chapter_id, sentence_id, word_index }
 | 依赖策略 | **运行时零第三方依赖**（仅 FastAPI + uvicorn + pydantic） | EPUB 解析走标准库 `zipfile`+`ElementTree`，避免被第三方解析器的行为差异绑住 |
 | TTS | `edge-tts`（必需）+ `espeak-ng`（可选离线回退） | edge-tts 免费无需密钥、支持词边界元数据；espeak 降级为句级高亮 |
 | 存储 | SQLite（进度/元数据/搜索索引） + 文件系统（原始 EPUB、解析结果、音频缓存） | 二进制与大对象走文件系统，结构化数据走 SQLite |
-| 前端 | 原生 ES Modules + CSS，**无打包器、无框架** | `pip install && uvicorn` 即可跑；阅读器交互自定义程度高，框架收益低 |
+| 前端 | 原生 ES Modules + CSS，**无打包器、无框架** | `uv sync && uv run lector-server` 即可跑；阅读器交互自定义程度高，框架收益低 |
 | 终端端 | Textual | Python 原生 TUI，跨平台，滚动/焦点/快捷键成熟 |
 | 测试 | pytest | — |
 
@@ -55,6 +55,8 @@ Cursor = { book_id, chapter_id, sentence_id, word_index }
 ## 3. 目录结构（按此落地）
 
 ```
+pyproject.toml       # uv 项目定义：依赖的唯一事实来源
+uv.lock              # 锁定的依赖解析结果
 lector/
   __init__.py
   config.py          # 配置：路径、端口、TTS 引擎、访问令牌
@@ -135,7 +137,7 @@ class TTSEngine(Protocol):
 ## 7. 实施阶段（每阶段结束必须满足该阶段的验收项）
 
 ### 阶段 0 · 骨架
-- 仓库结构、`requirements.txt`、`config.py`、SQLite schema、FastAPI 应用装配、`GET /api/v1/health` 返回 200 与 `{status, version, tts, parser_version}`。
+- 仓库结构、`pyproject.toml` + `uv.lock`、`config.py`、SQLite schema、FastAPI 应用装配、`GET /api/v1/health` 返回 200 与 `{status, version, tts, parser_version}`。
 - **验收**：`uvicorn lector.web:app` 起得来；`pytest` 有骨架用例通过；`curl /api/v1/health` 返回预期 JSON。
 
 ### 阶段 1 · EPUB 解析器

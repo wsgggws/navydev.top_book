@@ -19,22 +19,32 @@
 
 ## 常用命令
 
+环境与依赖一律用 **uv** 管理，不要手工建 venv、也不要手工 pip install。
+
 ```bash
-# 安装
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+# 安装：uv 自己准备 .venv 与 Python 版本（见 .python-version）
+uv sync
 
 # 开发服务器
-uvicorn lector.web:app --reload --port 8000
+uv run lector-server                              # 默认 127.0.0.1:8000
+uv run uvicorn lector.web:app --reload --port 8000
+
+# 终端端
+uv run lector
 
 # 测试
-pytest -q                    # 全量
-pytest -q tests/test_epub.py # 单文件
-pytest -q -k sentence        # 按名字过滤
+uv run pytest -q                    # 全量
+uv run pytest -q tests/test_epub.py # 单文件
+uv run pytest -q -k sentence        # 按名字过滤
 
 # 端到端冒烟
 curl -s localhost:8000/api/v1/health | jq .
 ```
+
+- `pyproject.toml` 是依赖的**唯一事实来源**；`uv.lock` 是锁定的解析结果，两者都要提交。
+- `requirements.txt` 是由 `uv export --format requirements-txt --no-hashes --no-emit-project --output-file requirements.txt` 生成的产物，**不要手工编辑**。只在需要 pip 环境时用它。
+- 改依赖用 `uv add <包>` / `uv remove <包>`，不要手写 `pyproject.toml` 里的版本号。
+- 新增运行时依赖仍要遵守下面的依赖白名单。
 
 没有 `package.json`、没有前端构建步骤、没有 lint 配置。改动靠 `pytest` 验证，靠肉眼验证界面。
 

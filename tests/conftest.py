@@ -2,19 +2,16 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
-sys.path.insert(0, str(Path(__file__).parent))
+from lector.config import Settings, load_settings
+from lector.epub.sentences import split_words
+from lector.tts.base import TTSResult, Voice, WordBoundary
 
-from factories import build_epub2, build_epub3, build_malicious_epub  # noqa: E402
-
-from lector.config import Settings, load_settings  # noqa: E402
-from lector.epub.sentences import split_words  # noqa: E402
-from lector.tts.base import TTSResult, Voice, WordBoundary  # noqa: E402
+from factories import build_epub2, build_epub3, build_malicious_epub
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BOOKS_DIR = REPO_ROOT / "books"

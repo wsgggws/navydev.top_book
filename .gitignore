@@ -222,3 +222,5 @@ __marimo__/
 # Lector 运行时数据
 data/
 .DS_Store
+
+# uv：.python-version 与 uv.lock 要提交，它们是环境的一部分

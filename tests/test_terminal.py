@@ -45,10 +45,6 @@ def server(tmp_path):
 
 def test_terminal_opens_a_book_and_reads(server, epub2_bytes: bytes):
     """The shelf lists the book and the reader shows its sentences."""
-    import sys
-    from pathlib import Path
-
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "terminal"))
     from lector_tui.app import LectorApp
 
     import httpx
@@ -79,10 +75,6 @@ def test_terminal_opens_a_book_and_reads(server, epub2_bytes: bytes):
 
 def test_terminal_moves_the_cursor(server, epub2_bytes: bytes):
     """Arrow keys move the one cursor."""
-    import sys
-    from pathlib import Path
-
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "terminal"))
     from lector_tui.app import LectorApp
 
     import httpx
@@ -111,10 +103,6 @@ def test_terminal_moves_the_cursor(server, epub2_bytes: bytes):
 
 def test_terminal_pushes_the_progress(server, epub2_bytes: bytes):
     """``s`` sends the position to the server."""
-    import sys
-    from pathlib import Path
-
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "terminal"))
     from lector_tui.app import LectorApp
 
     import httpx

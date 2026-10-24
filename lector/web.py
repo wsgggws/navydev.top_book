@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -166,6 +167,19 @@ def _clean_errors(exc: RequestValidationError) -> list[dict]:
 def _request_id(request: Request) -> str:
     """A cheap request id for error reports."""
     return request.headers.get("x-request-id", "") or f"req-{id(request):x}"
+
+
+def main() -> None:
+    """Entry point of the server (``uv run lector-server``)."""
+    import uvicorn
+
+    settings = load_settings()
+    uvicorn.run(
+        "lector.web:app",
+        host=settings.host,
+        port=settings.port,
+        reload=bool(os.environ.get("LECTOR_RELOAD")),
+    )
 
 
 app = create_app()

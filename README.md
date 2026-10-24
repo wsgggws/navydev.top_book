@@ -22,22 +22,23 @@ EPUB 阅读器 + 有声书播放器。网页端读、网页端听、终端读、
 
 ## 快速上手
 
+环境与依赖用 [uv](https://docs.astral.sh/uv/) 管理：它自己准备 `.venv` 与
+Python 版本（`.python-version` 锁定 3.11），不需要手工建虚拟环境。
+
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn lector.web:app --reload --port 8000
+uv sync                      # 装依赖（按 uv.lock）
+uv run lector-server         # 起服务端，默认 127.0.0.1:8000
+uv run lector                # 起终端端
+uv run pytest -q             # 跑测试
 ```
 
 打开 http://localhost:8000，把 `books/` 里的 EPUB 拖进去。
 
-### 终端端
-
-```bash
-cd terminal && python -m lector_tui
-```
-
 终端端复用同一套 API 与同一份进度，默认连 `http://127.0.0.1:8000`；
 用 `LECTOR_URL` 与 `LECTOR_TOKEN` 改地址与令牌。
+
+依赖的唯一事实来源是 `pyproject.toml`，`uv.lock` 是锁定的解析结果；
+`requirements.txt` 由 `uv export` 生成，只在需要 pip 环境时用。
 
 ### 环境变量
 
@@ -54,6 +55,8 @@ cd terminal && python -m lector_tui
 ## 结构
 
 ```
+pyproject.toml    uv 项目定义（依赖的唯一事实来源）
+uv.lock           锁定的依赖解析结果
 lector/          服务端：解析器、TTS、HTTP 层、SQLite
 web/             网页端：原生 ES Modules + CSS，无打包器
 terminal/        终端端：Textual
@@ -65,8 +68,8 @@ data/            运行时数据（git 忽略）
 ## 开发
 
 ```bash
-pytest -q                    # 全量测试
-pytest -q tests/test_epub.py # 单文件
+uv run pytest -q                    # 全量测试
+uv run pytest -q tests/test_epub.py # 单文件
 curl -s localhost:8000/api/v1/health | jq .
 ```
 
