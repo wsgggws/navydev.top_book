@@ -114,6 +114,7 @@ const settings = {
   measure: $('#s-measure'),
   indent: $('#s-indent'),
   theme: $('#s-theme'),
+  gender: $('#s-gender'),
   voice: $('#s-voice'),
   rate: $('#s-rate'),
   gap: $('#s-gap'),
@@ -145,6 +146,9 @@ function applySettings() {
   for (const button of settings.theme.querySelectorAll('button')) {
     button.classList.toggle('is-active', button.dataset.theme === s.theme);
   }
+  for (const button of settings.gender.querySelectorAll('button')) {
+    button.classList.toggle('is-active', button.dataset.gender === s.voiceGender);
+  }
   dom.btnRate.textContent = `${Number(s.rate).toFixed(2)}×`;
 }
 
@@ -169,6 +173,17 @@ settings.indent.addEventListener('change', () => {
   state.setSetting('indent', settings.indent.checked);
   applySettings();
 });
+settings.gender.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-gender]');
+  if (!button) return;
+  state.setSetting('voiceGender', button.dataset.gender);
+  // 换了性别，之前挑的音色就不作数了，让它按语言与性别重新挑。
+  state.setSetting('voiceId', '');
+  state.setSetting('voiceTouched', false);
+  applySettings();
+  loadVoices();
+});
+
 settings.theme.addEventListener('click', (event) => {
   const button = event.target.closest('button[data-theme]');
   if (!button) return;
@@ -266,7 +281,7 @@ async function openBook(bookId) {
     await loadVoices();
     // 音色跟着书的语言走：中文书用中文，英文书用美式男声。
     if (!state.settings.voiceTouched && state.book.language) {
-      const wanted = matchVoice(state.book.language);
+      const wanted = matchVoice(state.book.language, state.settings.voiceGender);
       if (wanted) {
         state.setSetting('voiceId', wanted);
         settings.voice.value = wanted;
@@ -795,9 +810,15 @@ async function loadVoices() {
     state.voices = payload.voices || [];
     // 引擎有三百多个音色，界面上只给常用的那些。
     const featured = state.featuredVoices || [];
-    const shown = featured.length
+    let shown = featured.length
       ? state.voices.filter((voice) => featured.includes(voice.voice_id))
       : state.voices;
+    const gender = state.settings.voiceGender;
+    if (gender && gender !== 'any') {
+      const byGender = shown.filter((voice) => voice.gender === gender);
+      // 常用音色里没有这个性别时，宁可给全部，也不给空列表。
+      if (byGender.length) shown = byGender;
+    }
     settings.voice.replaceChildren();
     for (const voice of shown) {
       settings.voice.append(el('option', {
@@ -806,7 +827,7 @@ async function loadVoices() {
       }));
     }
     const wanted = state.settings.voiceId
-      || (state.book ? matchVoice(state.book.language) : '')
+      || (state.book ? matchVoice(state.book.language, state.settings.voiceGender) : '')
       || state.defaultVoice;
     const options = shown.length ? shown : state.voices;
     if (wanted && options.some((voice) => voice.voice_id === wanted)) {
@@ -829,27 +850,45 @@ async function loadVoices() {
  * Chinese books are read in Chinese, English books in American English
  * (a male voice); the client only falls back when the server has no opinion.
  */
-function matchVoice(language) {
-  if (!language) return '';
-  const prefix = language.split('-')[0].toLowerCase();
-  const byLanguage = (state.defaultVoices || {})[prefix];
-  if (byLanguage && state.voices.some((voice) => voice.voice_id === byLanguage)) {
-    return byLanguage;
-  }
+function matchVoice(language, gender) {
+  // 语言不明（EPUB 里写的是 und）时，按服务端默认音色的语言来。
+  const unknown = !language || ['und', 'zxx', 'none'].includes(language.toLowerCase());
+  const fallbackLocale = (state.defaultVoice || 'zh-CN').split('-')[0].toLowerCase();
+  const prefix = unknown ? fallbackLocale : language.split('-')[0].toLowerCase();
+  const wanted = gender && gender !== 'any' ? gender : null;
   const featured = state.featuredVoices || [];
   const pool = featured.length
     ? state.voices.filter((voice) => featured.includes(voice.voice_id))
     : state.voices;
-  const exact = pool.find((voice) => voice.locale.toLowerCase() === language.toLowerCase());
+  const fits = (voice) => !wanted || voice.gender === wanted;
+
+  // 这门语言的默认音色；英文的默认是美式，所以女声也留在美式里挑。
+  const byLanguage = (state.defaultVoices || {})[prefix];
+  const defaultVoice = byLanguage
+    ? state.voices.find((voice) => voice.voice_id === byLanguage)
+    : null;
+  if (defaultVoice && fits(defaultVoice)) return defaultVoice.voice_id;
+
+  const locale = defaultVoice
+    ? defaultVoice.locale.toLowerCase()
+    : (unknown ? '' : language.toLowerCase());
+  const exact = pool.find(
+    (voice) => voice.locale.toLowerCase() === locale && fits(voice),
+  );
   if (exact) return exact.voice_id;
+
   const loose = pool.find(
-    (voice) => voice.locale.split('-')[0].toLowerCase() === prefix,
+    (voice) => voice.locale.split('-')[0].toLowerCase() === prefix && fits(voice),
   );
   if (loose) return loose.voice_id;
+
   const any = state.voices.find(
-    (voice) => voice.locale.split('-')[0].toLowerCase() === prefix,
+    (voice) => voice.locale.split('-')[0].toLowerCase() === prefix && fits(voice),
   );
-  return any ? any.voice_id : '';
+  if (any) return any.voice_id;
+
+  const anywhere = pool.find(fits) || state.voices.find(fits);
+  return anywhere ? anywhere.voice_id : '';
 }
 
 async function handleShareCode() {

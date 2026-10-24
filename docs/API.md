@@ -45,6 +45,7 @@
 | --- | --- | --- | --- |
 | 400 | `BAD_REQUEST` | 请求体无法解析或参数非法 | 展示 `message`，不重试 |
 | 401 | `UNAUTHORIZED` | 缺少或错误的 Bearer token | 提示输入 token |
+| 403 | `FORBIDDEN` | 令牌有效但权限不够（如 reader 令牌想上传） | 换个权限更高的令牌 |
 | 404 | `NOT_FOUND` | 资源不存在 | 返回书架 |
 | 409 | `ALREADY_EXISTS` | 冲突（如书名重复上传且策略为拒绝） | 提示并引导到既有条目 |
 | 413 | `PAYLOAD_TOO_LARGE` | 上传超过 50MB | 提示改用小文件 |
@@ -88,7 +89,7 @@ uv run lector
 终端对每个 `/api/v1/*` 请求都带上 `Authorization: Bearer <token>`；
 `GET /api/v1/health` 不需要令牌，可用��探测服务是否活着。
 
-### 0.5 限流
+### 0.6 限流
 
 按客户端 IP：上传接口 10 次/分钟，其余读接口 600 次/分钟。超限返回 429 与 `Retry-After`（秒）。写接口命中限流时**不做**自动重试。
 
@@ -201,9 +202,12 @@ uv run lector
   "parser_version": 1,
   "default_voice": "zh-CN-XiaoxiaoNeural",
   "featured_voices": ["zh-CN-XiaoxiaoNeural", "en-US-AriaNeural"],
-  "default_voices": { "zh": "zh-CN-XiaoxiaoNeural", "en": "en-US-GuyNeural" }
+  "default_voices": { "zh": "zh-CN-XiaoxiaoNeural", "en": "en-US-GuyNeural" },
+  "scope": "admin"
 }
 ```
+
+- `scope` 是这个令牌拿到的权限：`admin` 或 `reader`。
 
 - `featured_voices` 是**界面上应当提供的常用音色**：中文（zh-CN）、美式（en-US）、英式（en-GB）各若干。引擎本身还有三百多个音色，`/tts/voices` 全部返回，客户端按需自选。
 - `default_voices` 是**按语言分的默认音色**：书是什么语言就用什么声音读，中文书用中文，英文书用美式男声。客户端不要自己猜，按这份表来。
@@ -340,6 +344,13 @@ uv run lector
 
 返回该句的 MP3 二进制。
 
+可选查询参数：
+
+| 参数 | 说明 |
+| --- | --- |
+| `voice_id` | 用哪个音色合成。缺省按该书的语言定（见 `default_voices`） |
+| `rate` | 合成语速，如 `+10%`。缺省 `+0%` |
+
 - `Content-Type: audio/mpeg`
 - `Content-Length` 必填（客户端据此预载下一句）
 - `Cache-Control: public, max-age=31536000, immutable`（URL 含内容哈希，天然不可变）
@@ -349,7 +360,8 @@ uv run lector
 
 ### `GET /api/v1/books/{book_id}/audio/{sentence_id}.words`
 
-该句的**词边界**，逐词高亮的数据源：
+该句的**词边界**，逐词高亮的数据源。查询参数与上面的 MP3 端点相同
+（`voice_id`、`rate`），两者必须一致，否则拿到的词边界对不上音频。
 
 ```json
 {

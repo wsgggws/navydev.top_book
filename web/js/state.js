@@ -18,6 +18,7 @@ const DEFAULT_SETTINGS = {
   gap: 0,
   voiceId: '',
   voiceTouched: false,
+  voiceGender: 'female',
   follow: true,
 };
 

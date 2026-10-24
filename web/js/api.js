@@ -63,8 +63,20 @@ export const api = {
   getChapter: (bookId, chapterId) => request(`/books/${bookId}/chapters/${chapterId}`),
   getTimeline: (bookId, chapterId) => request(`/books/${bookId}/chapters/${chapterId}/timeline`),
 
-  audioUrl: (bookId, sentenceId) => `${BASE}/books/${bookId}/audio/${sentenceId}.mp3`,
-  getWords: (bookId, sentenceId) => request(`/books/${bookId}/audio/${sentenceId}.words`),
+  audioUrl: (bookId, sentenceId, voiceId, rate) => {
+    const query = new URLSearchParams();
+    if (voiceId) query.set('voice_id', voiceId);
+    if (rate && rate !== '+0%') query.set('rate', rate);
+    const suffix = query.toString() ? `?${query}` : '';
+    return `${BASE}/books/${bookId}/audio/${sentenceId}.mp3${suffix}`;
+  },
+  getWords: (bookId, sentenceId, voiceId, rate) => {
+    const query = new URLSearchParams();
+    if (voiceId) query.set('voice_id', voiceId);
+    if (rate && rate !== '+0%') query.set('rate', rate);
+    const suffix = query.toString() ? `?${query}` : '';
+    return request(`/books/${bookId}/audio/${sentenceId}.words${suffix}`);
+  },
   warmAudio: (bookId, body) => request(`/books/${bookId}/audio/warm`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

@@ -305,3 +305,28 @@ def test_search_finds_and_jumps(server, epub2_bytes: bytes):
             assert target
 
     asyncio.run(scenario())
+
+
+def test_the_terminal_does_not_change_the_shelf(server, epub2_bytes: bytes):
+    """终端端只读：书架上没有上传与删除。"""
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "terminal"))
+    from lector_tui.app import LectorApp
+
+    async def scenario():
+        app = LectorApp(base_url=server)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            from lector_tui.screens.library import LibraryScreen
+
+            keys = {binding.key for binding in LibraryScreen.BINDINGS}
+            assert "u" not in keys
+            assert "d" not in keys
+            assert "enter" in keys
+            assert "c" in keys
+            # 界面上也没有上传输入框。
+            assert not app.screen.query("#upload-input")
+
+    asyncio.run(scenario())

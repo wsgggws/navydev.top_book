@@ -38,7 +38,7 @@ uv run pytest -q             # 跑测试
 make test                    # 跑测试
 make server                  # 起服务端
 make terminal                # 起终端端
-make book books/some.epub    # 造一本书，并送进服务端
+make book books/my.epub      # 造一本书，并送进服务端
 ```
 
 打开 http://localhost:8000，把 `books/` 里的 EPUB 拖进去。
@@ -90,13 +90,13 @@ uv run lector
 
 ## 在项目里造一本书
 
-`make book books/some.epub` 把 Markdown 变成 EPUB，并送进正在跑的服务端 ——
+`make book books/my.epub` 把 Markdown 变成 EPUB，并送进正在跑的服务端 ——
 网页端立刻能看能听，不用手动上传。
 
 源可以是单个 Markdown 文件，也可以是一个目录（每个 `.md` 一章）：
 
 ```
-books/some/
+books/my/
     meta.json        # {"title": …, "author": …, "language": …, "cover": "images/cover.jpg"}
     01-开始.md
     02-之后.md
@@ -126,6 +126,29 @@ make book BOOK="books/某本书 (作者).epub"  # 路径带空格时用这种写
 网页端有专门的窄屏布局：顶栏与听书条按拇指高度设计，目录与设置是全屏抽屉，
 触摸目标不小于 44px，听书条留出底部安全区。375px 宽下正文仍是单列满宽，
 不横向溢出。
+
+## 部署上线
+
+见 **[docs/DEPLOY.md](docs/DEPLOY.md)**：uv 装依赖、systemd 跑进程、
+Caddy/nginx 管 TLS、数据备份与升级。`deploy/` 里有现成的配置文件。
+
+一句话版本：
+
+```bash
+export LECTOR_TOKEN="$(openssl rand -hex 24)"
+export LECTOR_DATA_DIR=/var/lib/lector
+export LECTOR_HOST=127.0.0.1
+uv run lector-server
+```
+
+**令牌是必须的**：不设 `LECTOR_TOKEN` 时服务端只监听回环地址。令牌还能分级：
+
+| 令牌 | 权限 |
+| --- | --- |
+| `<token>` / `<token>:admin` | 全部：读、上传、删除、预热音频、写进度 |
+| `<token>:reader` | 读 + 写自己的阅读进度；**不能**上传/删除书 |
+
+终端端只读，给它 `reader` 就够。
 
 ## 跨端接力
 

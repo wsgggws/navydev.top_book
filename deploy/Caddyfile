@@ -1,0 +1,4 @@
+# Caddy：自动续证书，只要一个域名。
+reader.example.com {
+    reverse_proxy 127.0.0.1:8000
+}

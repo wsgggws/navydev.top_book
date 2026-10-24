@@ -84,39 +84,6 @@ class ApiClient:
     def get_book(self, book_id: str) -> dict:
         return self.request(f"/books/{book_id}")
 
-    def delete_book(self, book_id: str) -> None:
-        self.request(f"/books/{book_id}", method="DELETE")
-
-    def upload_book(self, path: str, title: str | None = None) -> dict:
-        """Upload a local EPUB file."""
-        boundary = "----lectorboundary"
-        fields = []
-        if title:
-            fields.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"title\"\r\n\r\n{title}\r\n")
-        filename = os.path.basename(path)
-        with open(path, "rb") as handle:
-            payload = handle.read()
-        head = (
-            f"--{boundary}\r\n"
-            f"Content-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\n"
-            f"Content-Type: application/epub+zip\r\n\r\n"
-        ).encode("utf-8")
-        tail = f"\r\n--{boundary}--\r\n".encode("utf-8")
-        body = "".join(fields).encode("utf-8") + head + payload + tail
-        request = Request(
-            f"{self.base_url.rstrip('/')}/api/v1/books",
-            data=body,
-            headers={**self._headers(), "Content-Type": f"multipart/form-data; boundary={boundary}"},
-            method="POST",
-        )
-        try:
-            with urlopen(request, timeout=120) as response:
-                return json.loads(response.read().decode("utf-8"))
-        except HTTPError as exc:
-            raise ApiError(exc.code, "UPLOAD_FAILED", str(exc.reason)) from exc
-        except URLError as exc:
-            raise ApiError(0, "CONNECTION_ERROR", f"无法连接服务器：{exc.reason}") from exc
-
     def get_toc(self, book_id: str) -> list[dict]:
         return self.request(f"/books/{book_id}/toc").get("toc", [])
 

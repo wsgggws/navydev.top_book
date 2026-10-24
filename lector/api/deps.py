@@ -11,7 +11,7 @@ from fastapi import Request
 
 from lector.api.errors import ApiError
 from lector.audio import AudioService
-from lector.config import Settings
+from lector.config import SCOPE_ADMIN, SCOPE_READER, SCOPES, Settings
 from lector.db import Database
 from lector.store import Store
 from lector.tts.base import TTSEngine
@@ -73,22 +73,65 @@ def client_address(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-def _check_token(request: Request) -> None:
-    """Enforce the bearer token when one is configured."""
-    token = get_context(request).settings.token
-    if not token:
-        return
+@dataclass(frozen=True)
+class Credentials:
+    """The caller's token and what it is allowed to do."""
+
+    token: str
+    scope: str = SCOPE_ADMIN
+
+
+def parse_token(raw: str) -> Credentials:
+    """Split ``<token>:reader`` into its parts.
+
+    A token without a known scope suffix is an admin token, which keeps the
+    old single-token setups working unchanged.
+    """
+    if not raw:
+        return Credentials(token="", scope=SCOPE_ADMIN)
+    token, sep, suffix = raw.rpartition(":")
+    if sep and suffix in SCOPES:
+        return Credentials(token=token, scope=suffix)
+    return Credentials(token=raw, scope=SCOPE_ADMIN)
+
+
+def _credentials(request: Request) -> Credentials:
+    """Authenticate the request and return the caller's permissions."""
+    ctx = get_context(request)
+    configured = ctx.settings.token
+    if not configured:
+        return Credentials(token="", scope=SCOPE_ADMIN)
     header = request.headers.get("authorization", "")
     if not header.lower().startswith("bearer "):
         raise ApiError(401, "UNAUTHORIZED", "缺少访问令牌")
     provided = header[7:].strip()
-    if not secrets.compare_digest(provided, token):
+    # 权限后缀是服务端自己的配置，客户端只送密钥本身。
+    if not secrets.compare_digest(provided, parse_token(configured).token):
         raise ApiError(401, "UNAUTHORIZED", "访问令牌无效")
+    return parse_token(configured)
 
 
 async def require_auth(request: Request) -> None:
     """Authenticate the request and charge it to the read budget."""
-    _check_token(request)
+    _credentials(request)
+    ctx = get_context(request)
+    ctx.limiter.check("read", client_address(request), READ_LIMIT)
+
+
+async def require_reader(request: Request) -> None:
+    """A reader may read and record its own position, but not change the library."""
+    credentials = _credentials(request)
+    if credentials.scope not in (SCOPE_READER, SCOPE_ADMIN):
+        raise ApiError(403, "FORBIDDEN", "该令牌没有写权限")
+    ctx = get_context(request)
+    ctx.limiter.check("read", client_address(request), READ_LIMIT)
+
+
+async def require_admin(request: Request) -> None:
+    """Only an admin token may change the library."""
+    credentials = _credentials(request)
+    if credentials.scope != SCOPE_ADMIN:
+        raise ApiError(403, "FORBIDDEN", "该令牌没有管理权限")
     ctx = get_context(request)
     ctx.limiter.check("read", client_address(request), READ_LIMIT)
 

@@ -54,10 +54,17 @@ export class Player {
     if (this.onState) this.onState(value);
   }
 
+  /** The voice and rate the tiles are synthesised with. */
+  get voiceId() { return state.settings.voiceId || ''; }
+
+  get rateParam() { return '+0%'; }
+
   /** Fetch the audio of a sentence, reusing the blob when it is known. */
   async _fetchAudio(sentenceId) {
     if (this.blobUrls.has(sentenceId)) return this.blobUrls.get(sentenceId);
-    const response = await fetch(api.audioUrl(state.book.book_id, sentenceId));
+    const response = await fetch(
+      api.audioUrl(state.book.book_id, sentenceId, this.voiceId, this.rateParam),
+    );
     if (!response.ok) {
       let code = 'INTERNAL_ERROR';
       let message = '音频加载失败';
@@ -78,7 +85,9 @@ export class Player {
 
   async _fetchWords(sentenceId) {
     try {
-      const payload = await api.getWords(state.book.book_id, sentenceId);
+      const payload = await api.getWords(
+        state.book.book_id, sentenceId, this.voiceId, this.rateParam,
+      );
       return payload;
     } catch (error) {
       return { words: [], granularity: 'sentence', duration: 0 };

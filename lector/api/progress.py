@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
 
-from lector.api.deps import AppContext, get_context, require_auth
+from lector.api.deps import AppContext, get_context, require_auth, require_reader
 from lector.api.errors import ApiError, validation_error
 from lector.models import Progress, ProgressCursor, ProgressUpdate
 from lector.store import utcnow
@@ -61,7 +61,7 @@ async def write_progress(
     book_id: str,
     payload: ProgressUpdate,
     request: Request,
-    _: None = Depends(require_auth),
+    _: None = Depends(require_reader),
 ) -> Progress:
     """Move the reading position.
 

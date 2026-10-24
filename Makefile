@@ -1,12 +1,12 @@
 # Lector —— 常用命令
 #
-#   make book books/some.epub        造一本书（或把已有的 EPUB 收进书架）
+#   make book books/my.epub          造一本书（或把已有的 EPUB 收进书架）
 #   make book BOOK="路径 带空格.epub"  路径里有空格时用这种写法
 #   make import BOOK=books/x.epub    只把已有的 EPUB 送进服务端
 #   make test / server / terminal / dev / clean
 
 UV ?= uv
-BOOK ?= books/some.epub
+BOOK ?= books/book.epub
 URL ?= http://127.0.0.1:8000
 
 .DEFAULT_GOAL := help
@@ -18,12 +18,12 @@ help:  ## 显示这份清单
 
 # 位置参数里带空格时，make 会把目标按空格拆开；这里用 wordlist 把它们拼回去。
 # 只有一个目标（就是 book/import 自己）时，退回 $(BOOK)。
-book:  ## 造一本书：make book books/some.epub
+book:  ## 造一本书：make book books/my.epub
 	@target="$(wordlist 2,100,$(MAKECMDGOALS))"; \
 	 if [ -z "$$target" ]; then target="$(BOOK)"; fi; \
 	 $(UV) run python -m lector.build --url $(URL) "$$target"
 
-import:  ## 把已有的 EPUB 送进服务端：make import books/some.epub
+import:  ## 把已有的 EPUB 送进服务端：make import books/my.epub
 	@target="$(wordlist 2,100,$(MAKECMDGOALS))"; \
 	 if [ -z "$$target" ]; then target="$(BOOK)"; fi; \
 	 $(UV) run python -m lector.build --url $(URL) --import-only "$$target"

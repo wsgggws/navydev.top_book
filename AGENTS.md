@@ -48,8 +48,8 @@ make test            # uv run pytest -q
 make server          # uv run lector-server
 make dev             # 带热重载的服务端
 make terminal        # uv run lector
-make book books/some.epub   # 生成一本书，并送进服务端
-make import books/some.epub # 把已有的 EPUB 送进服务端
+make book books/my.epub     # 造一本书（或把已有的 EPUB 收进书架）
+make import books/my.epub   # 把已有的 EPUB 送进服务端
 ```
 
 - `pyproject.toml` 是依赖的**唯一事实来源**；`uv.lock` 是锁定的解析结果，两者都要提交。
@@ -62,7 +62,7 @@ make import books/some.epub # 把已有的 EPUB 送进服务端
 
 ## 在项目里造一本书
 
-`make book books/some.epub` 把 Markdown 源变成 EPUB，并顺手送进正在跑的服务端，
+`make book books/my.epub` 把 Markdown 源变成 EPUB，并顺手送进正在跑的服务端，
 网页端立刻能看能听。**目标文件已经存在又没有源时，它不重建，只把成品收进书架** ——
 所以「把一本书加进来」和「造一本书」是同一条命令。
 
@@ -72,7 +72,7 @@ make import books/some.epub # 把已有的 EPUB 送进服务端
 源可以是单个 Markdown 文件，也可以是一个目录：
 
 ```
-books/some/
+books/my/
     meta.json        # {"title": …, "author": …, "language": …, "cover": "images/cover.jpg"}
     01-开始.md       # 每个 .md 一个章节，按文件名排序
     02-之后.md
@@ -119,6 +119,9 @@ books/some/
 - **上传安全**：拒绝 `..` 路径穿越条目、拒绝符号链接、限制解压膨胀比。上传上限 50MB。
 - **音频缓存**：缓存键 = `sha256(text | voice | rate | engine_version)`。同键必须复用，不重复合成。
 - **无第三方案例**：EPUB 解析走标准库 `zipfile` + `ElementTree` + `html.parser`，不引入第三方解析器。
+- **权限分级**：令牌可带权限后缀 `<token>:admin`（默认）或 `<token>:reader`。
+  reader 只能读与写自己的阅读进度，不能上传/删除书、不能动音频缓存。终端端只读，
+  用 reader 即可。
 - **依赖白名单**：`fastapi` `uvicorn` `pydantic` `edge-tts` `textual` `pytest` `httpx` `python-multipart`。新增依赖需要能回答"标准库为什么做不到"，并在提交说明里写清。
   - `python-multipart`：`docs/API.md` §3 规定上传端点是 `multipart/form-data`，FastAPI 解析 multipart 表单强制依赖它；标准库的 `email`/`cgi` 无法被 FastAPI 直接使用（`cgi` 已在 Python 3.13 移除）。
 - **进度写入**：客户端防抖 600ms。服务端按 `updated_at` 后写入者胜。

@@ -10,7 +10,13 @@ from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, Up
 from fastapi.responses import FileResponse
 from starlette.concurrency import run_in_threadpool
 
-from lector.api.deps import AppContext, get_context, require_auth, require_auth_upload
+from lector.api.deps import (
+    AppContext,
+    client_address,
+    get_context,
+    require_admin,
+    require_auth,
+)
 from lector.api.errors import ApiError, epub_invalid
 from lector.epub.errors import EpubError, EpubNotAZipError
 from lector.models import Book, BookDetailResponse, UploadResponse
@@ -45,10 +51,11 @@ async def upload_book(
     title: str | None = Form(None),
     author: str | None = Form(None),
     voice_id: str | None = Form(None),
-    _: None = Depends(require_auth_upload),
+    _: None = Depends(require_admin),
 ) -> UploadResponse:
     """Upload an EPUB.  Uploading the same file twice returns the first book."""
     ctx = get_context(request)
+    ctx.limiter.check("upload", client_address(request), 10)
 
     data = await _read_upload(file, ctx.settings.max_upload_bytes)
     started = time.monotonic()
@@ -120,7 +127,7 @@ async def get_book(
 async def delete_book(
     book_id: str,
     request: Request,
-    _: None = Depends(require_auth),
+    _: None = Depends(require_admin),
 ) -> Response:
     """Delete a book with its parsed content and audio."""
     ctx = get_context(request)

@@ -2,14 +2,30 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 
-from lector.api.deps import AppContext, get_context, require_auth
+from lector.api.deps import AppContext, get_context, require_admin, require_auth
 from lector.api.errors import ApiError
 from lector.models import WarmRequest, WarmResponse, WordsResponse
 from lector.tts.base import TTSError, TTSTimeout, TTSUnavailable
 
 router = APIRouter(tags=["audio"])
+
+
+async def _voice_for(ctx: AppContext, book_id: str, voice_id: str | None) -> str:
+    """Which voice to synthesise with.
+
+    The client may name one (``?voice_id=``); otherwise the book's own choice
+    is used, and failing that the language decides.
+    """
+    if voice_id:
+        return voice_id
+    row = ctx.store.db.query_one(
+        "SELECT voice_id FROM books WHERE book_id = ?", (book_id,)
+    )
+    preferred = row["voice_id"] if row else None
+    book = ctx.store.get_book(book_id)
+    return await ctx.audio.choose_voice(book.language if book else None, preferred)
 
 
 def require_book(ctx: AppContext, book_id: str):
@@ -24,20 +40,17 @@ async def get_audio(
     book_id: str,
     sentence_id: str,
     request: Request,
+    voice_id: str | None = Query(None, description="用哪个音色合成；缺省按书的语言定"),
+    rate: str | None = Query(None, description="合成语速，如 +10%"),
     _: None = Depends(require_auth),
 ) -> Response:
     """The MP3 of one sentence.  The first request synthesises it."""
     ctx = get_context(request)
     require_book(ctx, book_id)
-    row = ctx.store.db.query_one(
-        "SELECT voice_id FROM books WHERE book_id = ?", (book_id,)
-    )
-    preferred = row["voice_id"] if row else None
-    voice = await ctx.audio.choose_voice(
-        ctx.store.get_book(book_id).language, preferred
-    )
+    voice = await _voice_for(ctx, book_id, voice_id)
+    rate = rate or "+0%"
     try:
-        tile = await ctx.audio.tile(book_id, sentence_id, voice)
+        tile = await ctx.audio.tile(book_id, sentence_id, voice, rate)
     except TTSTimeout as exc:
         raise ApiError(504, "TTS_TIMEOUT", str(exc)) from exc
     except TTSUnavailable as exc:
@@ -63,20 +76,17 @@ async def get_words(
     book_id: str,
     sentence_id: str,
     request: Request,
+    voice_id: str | None = Query(None, description="用哪个音色合成；缺省按书的语言定"),
+    rate: str | None = Query(None, description="合成语速，如 +10%"),
     _: None = Depends(require_auth),
 ) -> WordsResponse:
     """The word boundaries of one sentence — the data behind the highlight."""
     ctx = get_context(request)
     require_book(ctx, book_id)
-    row = ctx.store.db.query_one(
-        "SELECT voice_id FROM books WHERE book_id = ?", (book_id,)
-    )
-    preferred = row["voice_id"] if row else None
-    voice = await ctx.audio.choose_voice(
-        ctx.store.get_book(book_id).language, preferred
-    )
+    voice = await _voice_for(ctx, book_id, voice_id)
+    rate = rate or "+0%"
     try:
-        tile = await ctx.audio.tile(book_id, sentence_id, voice)
+        tile = await ctx.audio.tile(book_id, sentence_id, voice, rate)
     except TTSTimeout as exc:
         raise ApiError(504, "TTS_TIMEOUT", str(exc)) from exc
     except TTSError as exc:
@@ -100,7 +110,7 @@ async def warm_audio(
     book_id: str,
     payload: WarmRequest,
     request: Request,
-    _: None = Depends(require_auth),
+    _: None = Depends(require_admin),
 ) -> WarmResponse:
     """Pre-synthesise a chapter or the whole book."""
     ctx = get_context(request)
@@ -149,7 +159,7 @@ async def warm_audio(
 async def clear_audio(
     book_id: str,
     request: Request,
-    _: None = Depends(require_auth),
+    _: None = Depends(require_admin),
 ) -> Response:
     """Drop every synthesised tile of a book — used after changing the voice."""
     ctx = get_context(request)

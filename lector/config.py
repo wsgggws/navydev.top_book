@@ -27,6 +27,13 @@ TTS_SYNTH_TIMEOUT = 8.0
 
 DEFAULT_VOICE = "zh-CN-XiaoxiaoNeural"
 
+#: 令牌可以带权限后缀：``<token>:admin``（默认）或 ``<token>:reader``。
+#: reader 只能读书与写自己的阅读进度（跨端接力要用），
+#: 不能上传/删除书、不能清缓存或预热音频。
+SCOPE_ADMIN = "admin"
+SCOPE_READER = "reader"
+SCOPES = (SCOPE_ADMIN, SCOPE_READER)
+
 #: 每种语言默认读哪个音色。英文用美式男声，中文用普通话女声。
 DEFAULT_VOICE_BY_LOCALE = {
     "zh": "zh-CN-XiaoxiaoNeural",

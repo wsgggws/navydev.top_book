@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
 
-from lector.api.deps import get_context, require_auth
+from lector.api.deps import get_context, require_auth, require_reader
 from lector.api.errors import ApiError
 from lector.models import ShortCodeRequest, ShortCodeResponse
 from lector.positions import generate_short_code, normalize_short_code
@@ -20,7 +20,7 @@ CODE_ATTEMPTS = 8
 async def create_short_code(
     payload: ShortCodeRequest,
     request: Request,
-    _: None = Depends(require_auth),
+    _: None = Depends(require_reader),
 ) -> ShortCodeResponse:
     """Share a position.  The same position always gets the same code."""
     ctx = get_context(request)
