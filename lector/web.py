@@ -34,6 +34,7 @@ from lector.config import (
 )
 from lector.db import Database
 from lector.epub.errors import EpubError
+from lector.library import metadata_from_filename
 from lector.store import Store
 from lector.tts.base import TTSEngine
 from lector.tts.cache import AudioCache
@@ -269,13 +270,15 @@ def sync_seed_books(store: Store, directory: Path | None) -> None:
     if directory is None or not directory.is_dir():
         return
     for path in sorted(directory.glob("*.epub")):
+        title, author = metadata_from_filename(path)
         try:
             result = store.ingest(path.read_bytes())
         except (OSError, EpubError) as exc:
             logger.error("仓库书籍导入失败 %s: %s", path.name, exc)
             continue
+        store.update_metadata(result.book.book_id, title, author)
         if not result.duplicate:
-            logger.info("已导入仓库书籍《%s》", result.book.title)
+            logger.info("已导入仓库书籍《%s》", title)
 
 
 def main() -> None:

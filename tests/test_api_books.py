@@ -268,7 +268,7 @@ def test_repository_books_are_imported_and_public(tmp_path, epub2_bytes: bytes):
 
     library = tmp_path / "library"
     library.mkdir()
-    (library / "seed.epub").write_bytes(epub2_bytes)
+    (library / "Test Book (Alice).epub").write_bytes(epub2_bytes)
 
     settings = load_settings(tmp_path / "data")
     settings = settings.__class__(
@@ -281,4 +281,14 @@ def test_repository_books_are_imported_and_public(tmp_path, epub2_bytes: bytes):
     books = client.get("/api/v1/books")
     assert books.status_code == 200
     assert len(books.json()) == 1
+    assert books.json()[0]["title"] == "Test Book"
+    assert books.json()[0]["author"] == "Alice"
     assert "btn-import" not in client.get("/").text
+
+    # Same bytes, renamed file: filename metadata updates the existing book.
+    (library / "Test Book (Alice).epub").rename(library / "新书名（新作者）.epub")
+    sync_seed_books(app.state.ctx.store, settings.seed_books_dir)
+    updated = client.get("/api/v1/books").json()
+    assert len(updated) == 1
+    assert updated[0]["title"] == "新书名"
+    assert updated[0]["author"] == "新作者"

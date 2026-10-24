@@ -235,6 +235,29 @@ class Store:
         row = self.db.query_one("SELECT COUNT(*) AS n FROM books")
         return int(row["n"]) if row else 0
 
+    def update_metadata(self, book_id: str, title: str, author: str) -> None:
+        """Override display metadata, keeping the shelf order unchanged."""
+        row = self.get_book_row(book_id)
+        if row is None:
+            return
+        if row["title"] == title and row["author"] == author:
+            return
+        with self.db.write() as conn:
+            conn.execute(
+                "UPDATE books SET title = ?, author = ?, updated_at = updated_at "
+                "WHERE book_id = ?",
+                (title, author, book_id),
+            )
+        meta_path = self.meta_path(book_id)
+        if meta_path.exists():
+            try:
+                meta = json.loads(meta_path.read_text("utf-8"))
+            except (OSError, ValueError):
+                meta = {}
+            meta["title"] = title
+            meta["author"] = author
+            meta_path.write_text(json.dumps(meta, ensure_ascii=False), "utf-8")
+
     def load_chapter(self, book_id: str, chapter_id: str) -> Chapter | None:
         path = self.chapter_path(book_id, chapter_id)
         if not path.exists():
