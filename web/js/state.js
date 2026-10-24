@@ -6,6 +6,8 @@
 
 const SETTINGS_KEY = 'lector.settings';
 const BOOK_KEY = 'lector.book';
+/** 每本书自己的东西：音色、倍速、读到哪。 */
+const BOOK_PREFS_KEY = 'lector.books';
 
 const DEFAULT_SETTINGS = {
   theme: 'paper',
@@ -20,6 +22,15 @@ const DEFAULT_SETTINGS = {
   voiceTouched: false,
   voiceGender: 'female',
 };
+
+function loadBookPrefs() {
+  try {
+    const raw = localStorage.getItem(BOOK_PREFS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch (error) {
+    return {};
+  }
+}
 
 function loadSettings() {
   try {
@@ -51,6 +62,8 @@ export const state = new (class Store extends Emitter {
   constructor() {
     super();
     this.settings = loadSettings();
+    /** book_id → { voiceId, gender, rate, position } */
+    this.bookPrefs = loadBookPrefs();
     this.books = [];
     this.book = null;
     this.chapter = null;
@@ -75,6 +88,22 @@ export const state = new (class Store extends Emitter {
   setSetting(key, value) {
     this.settings[key] = value;
     this.saveSettings();
+  }
+
+  /** 一本书自己的偏好。 */
+  prefsFor(bookId) {
+    if (!this.bookPrefs[bookId]) this.bookPrefs[bookId] = {};
+    return this.bookPrefs[bookId];
+  }
+
+  /** 记下这本书的偏好：换书再切回来时还在。 */
+  setPref(bookId, key, value) {
+    if (!bookId) return;
+    this.prefsFor(bookId)[key] = value;
+    try {
+      localStorage.setItem(BOOK_PREFS_KEY, JSON.stringify(this.bookPrefs));
+    } catch (error) { /* storage may be unavailable */ }
+    this.emit('prefs', { bookId, key, value });
   }
 
   rememberBook(bookId) {

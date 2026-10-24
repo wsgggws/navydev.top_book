@@ -172,15 +172,21 @@ settings.indent.addEventListener('change', () => {
   state.setSetting('indent', settings.indent.checked);
   applySettings();
 });
-settings.gender.addEventListener('click', (event) => {
+settings.gender.addEventListener('click', async (event) => {
   const button = event.target.closest('button[data-gender]');
   if (!button) return;
   state.setSetting('voiceGender', button.dataset.gender);
   // 换了性别，之前挑的音色就不作数了，让它按语言与性别重新挑。
   state.setSetting('voiceId', '');
   state.setSetting('voiceTouched', false);
+  if (state.book) {
+    state.setPref(state.book.book_id, 'gender', button.dataset.gender);
+    state.setPref(state.book.book_id, 'voiceId', '');
+  }
   applySettings();
-  loadVoices();
+  // 等音色列表刷新完再记：这时才知道挑中了哪一个。
+  await loadVoices();
+  rememberVoiceChoice();
 });
 
 settings.theme.addEventListener('click', (event) => {
@@ -192,6 +198,7 @@ settings.theme.addEventListener('click', (event) => {
 settings.rate.addEventListener('input', () => {
   state.setSetting('rate', Number(settings.rate.value));
   player.setRate(state.settings.rate);
+  if (state.book) state.setPref(state.book.book_id, 'rate', state.settings.rate);
   applySettings();
 });
 settings.gap.addEventListener('input', () => {
@@ -201,6 +208,7 @@ settings.gap.addEventListener('input', () => {
 settings.voice.addEventListener('change', () => {
   state.setSetting('voiceId', settings.voice.value);
   state.setSetting('voiceTouched', true);
+  if (state.book) state.setPref(state.book.book_id, 'voiceId', settings.voice.value);
   dom.btnVoice.textContent = settings.voice.selectedOptions[0]
     ? settings.voice.selectedOptions[0].textContent
     : '—';
@@ -281,20 +289,27 @@ async function openBook(bookId) {
     dom.btnBack.hidden = false;
     dom.topbarBook.textContent = payload.book.title;
     await loadToc();
+
+    // 这本书自己的音色与倍速：换到别的书再切回来时还在。
+    const prefs = state.prefsFor(bookId);
+    if (prefs.gender) state.settings.voiceGender = prefs.gender;
+    if (typeof prefs.rate === 'number') state.settings.rate = prefs.rate;
+    player.setRate(state.settings.rate);
+    const family = languageFamily(state.book.language);
+    const saved = state.voices.find((voice) => voice.voice_id === prefs.voiceId);
+    const savedFits = saved
+      && (!family || saved.locale.split('-')[0].toLowerCase() === family);
+    // 记住的音色得是这本书这个语言的；不是就按语言与性别重新挑（空着让
+    // loadVoices 按语言挑，列表与选中项才对得上）。
+    state.settings.voiceId = savedFits ? saved.voice_id : '';
     await loadVoices();
-    // 音色跟着书的语言走：中文书用中文，英文书用美式男声。
-    if (!state.settings.voiceTouched && state.book.language) {
-      const wanted = matchVoice(state.book.language, state.settings.voiceGender);
-      if (wanted) {
-        state.setSetting('voiceId', wanted);
-        settings.voice.value = wanted;
-        dom.btnVoice.textContent = settings.voice.selectedOptions[0]
-          ? settings.voice.selectedOptions[0].textContent
-          : '—';
-      }
-    }
+    rememberVoiceChoice();
     const progress = payload.progress;
-    const target = progress && progress.cursor ? progress.cursor : null;
+    // 服务器上没有进度就用本地记的（换了设备或服务端还没写进去时）。
+    const local = state.prefsFor(bookId).position;
+    const target = progress && progress.cursor
+      ? progress.cursor
+      : (local ? { chapter_id: local.chapter_id, sentence_id: local.sentence_id, word_index: local.word_index } : null);
     if (target) {
       await loadChapter(target.chapter_id, target.sentence_id);
     } else {
@@ -319,8 +334,10 @@ async function openBook(bookId) {
  * dropping the reader into an empty chapter is a bad first impression.
  */
 async function openFirstReadableChapter() {
+  // 目录里排在前面的章节优先：封面、版权页之后就是正文，
+  // 免得打开书先落在"目录"那一页上。
   const ids = await chapterIds();
-  const limit = Math.min(ids.length, 6);
+  const limit = Math.min(ids.length, 8);
   let lastChapter = null;
   for (let index = 0; index < limit; index += 1) {
     const chapterId = ids[index];
@@ -461,6 +478,14 @@ function moveCursor(sentenceId, { scroll = false } = {}) {
   };
   state.setCursor(cursor, 'move');
   reader.setCurrent(sentenceId, { scroll });
+  // 本地也记一份：换设备、服务端暂时连不上时不至于从头开始。
+  if (state.book) {
+    state.setPref(state.book.book_id, 'position', {
+      chapter_id: cursor.chapter_id,
+      sentence_id: cursor.sentence_id,
+      word_index: cursor.word_index,
+    });
+  }
   writeProgress();
 }
 
@@ -541,12 +566,17 @@ async function chapterIds() {
   const ids = new Set();
   const count = state.book ? state.book.chapter_count : 0;
   for (let index = 0; index < count; index += 1) ids.add(`c${index}`);
+  // 目录里出现过的章节排在前面：那是这本书自己的阅读顺序。
+  const ordered = [];
   for (const node of state.toc) {
-    if (node.chapter_id) ids.add(node.chapter_id);
+    if (node.chapter_id && !ordered.includes(node.chapter_id)) {
+      ordered.push(node.chapter_id);
+    }
   }
-  chapterIdsCache = [...ids].sort(
-    (left, right) => Number(left.slice(1)) - Number(right.slice(1)),
-  );
+  const rest = [...ids]
+    .filter((id) => !ordered.includes(id))
+    .sort((left, right) => Number(left.slice(1)) - Number(right.slice(1)));
+  chapterIdsCache = [...ordered, ...rest];
   chapterIdsBook = state.book.book_id;
   return chapterIdsCache;
 }
@@ -641,6 +671,8 @@ dom.rateMenu.addEventListener('click', (event) => {
   const value = Number(button.dataset.rate);
   state.setSetting('rate', value);
   player.setRate(value);
+  // 倍速也是这本书自己的：换书再切回来还是这个速度。
+  if (state.book) state.setPref(state.book.book_id, 'rate', value);
   applySettings();
   closeRateMenu();
 });
@@ -846,15 +878,40 @@ document.addEventListener('keydown', async (event) => {
 /* 启动                                                                */
 /* ------------------------------------------------------------------ */
 
+/** 把当前挑中的音色记到这本书名下。 */
+function rememberVoiceChoice() {
+  if (!state.book || !state.settings.voiceId) return;
+  state.setPref(state.book.book_id, 'voiceId', state.settings.voiceId);
+}
+
+/** 书的语言决定能用哪些音色。 */
+function languageFamily(language) {
+  if (!language) return '';
+  const prefix = language.split('-')[0].toLowerCase();
+  return ['zh', 'en'].includes(prefix) ? prefix : '';
+}
+
+/** 这一本书可以用的音色：同语言的那些。 */
+function voicesFor(language) {
+  const featured = state.featuredVoices || [];
+  const pool = featured.length
+    ? state.voices.filter((voice) => featured.includes(voice.voice_id))
+    : state.voices;
+  const family = languageFamily(language);
+  if (!family) return pool;
+  const same = pool.filter(
+    (voice) => voice.locale.split('-')[0].toLowerCase() === family,
+  );
+  // 没有同语言的就退回全部，总比给不出声音强。
+  return same.length ? same : pool;
+}
+
 async function loadVoices() {
   try {
     const payload = await api.voices();
     state.voices = payload.voices || [];
-    // 引擎有三百多个音色，界面上只给常用的那些。
-    const featured = state.featuredVoices || [];
-    let shown = featured.length
-      ? state.voices.filter((voice) => featured.includes(voice.voice_id))
-      : state.voices;
+    // 中文书只给中文的声音，英文书只给英文的。
+    let shown = voicesFor(state.book ? state.book.language : '');
     const gender = state.settings.voiceGender;
     if (gender && gender !== 'any') {
       const byGender = shown.filter((voice) => voice.gender === gender);
@@ -877,6 +934,7 @@ async function loadVoices() {
     } else if (options.length) {
       settings.voice.value = options[0].voice_id;
     }
+    state.settings.voiceId = settings.voice.value;
     state.setSetting('voiceId', settings.voice.value);
     dom.btnVoice.textContent = settings.voice.selectedOptions[0]
       ? settings.voice.selectedOptions[0].textContent
@@ -893,43 +951,30 @@ async function loadVoices() {
  * (a male voice); the client only falls back when the server has no opinion.
  */
 function matchVoice(language, gender) {
-  // 语言不明（EPUB 里写的是 und）时，按服务端默认音色的语言来。
-  const unknown = !language || ['und', 'zxx', 'none'].includes(language.toLowerCase());
-  const fallbackLocale = (state.defaultVoice || 'zh-CN').split('-')[0].toLowerCase();
-  const prefix = unknown ? fallbackLocale : language.split('-')[0].toLowerCase();
   const wanted = gender && gender !== 'any' ? gender : null;
-  const featured = state.featuredVoices || [];
-  const pool = featured.length
-    ? state.voices.filter((voice) => featured.includes(voice.voice_id))
-    : state.voices;
+  // 只在这本书的语言范围里挑。
+  const pool = voicesFor(language);
   const fits = (voice) => !wanted || voice.gender === wanted;
+  const family = languageFamily(language)
+    || (state.defaultVoice || 'zh-CN').split('-')[0].toLowerCase();
 
   // 这门语言的默认音色；英文的默认是美式，所以女声也留在美式里挑。
-  const byLanguage = (state.defaultVoices || {})[prefix];
+  const byLanguage = (state.defaultVoices || {})[family];
   const defaultVoice = byLanguage
     ? state.voices.find((voice) => voice.voice_id === byLanguage)
     : null;
   if (defaultVoice && fits(defaultVoice)) return defaultVoice.voice_id;
 
-  const locale = defaultVoice
-    ? defaultVoice.locale.toLowerCase()
-    : (unknown ? '' : language.toLowerCase());
+  const locale = defaultVoice ? defaultVoice.locale.toLowerCase() : '';
   const exact = pool.find(
     (voice) => voice.locale.toLowerCase() === locale && fits(voice),
   );
   if (exact) return exact.voice_id;
 
-  const loose = pool.find(
-    (voice) => voice.locale.split('-')[0].toLowerCase() === prefix && fits(voice),
-  );
+  const loose = pool.find(fits);
   if (loose) return loose.voice_id;
 
-  const any = state.voices.find(
-    (voice) => voice.locale.split('-')[0].toLowerCase() === prefix && fits(voice),
-  );
-  if (any) return any.voice_id;
-
-  const anywhere = pool.find(fits) || state.voices.find(fits);
+  const anywhere = state.voices.find(fits);
   return anywhere ? anywhere.voice_id : '';
 }
 

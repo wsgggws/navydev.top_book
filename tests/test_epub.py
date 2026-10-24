@@ -163,3 +163,45 @@ def test_dropped_tags_do_not_carry_anchors():
     anchors = [a for block in blocks for a in block.anchors]
     assert "x" not in anchors
     assert "y" not in anchors
+
+
+def test_language_is_guessed_when_the_book_does_not_say(tmp_path):
+    """书没写语言（und）时，从正文里看出来。"""
+    import zipfile
+
+    from lector.epub.parse import parse_epub
+
+    def make(language: str, text: str) -> bytes:
+        buffer = tmp_path / f"{language}.epub"
+        source = tmp_path / "src"
+        source.mkdir(exist_ok=True)
+        (source / "ch0.xhtml").write_text(
+            f"<html><body><p>{text}</p></body></html>", "utf-8"
+        )
+        opf = f"""<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0" unique-identifier="uid">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title>一本书</dc:title><dc:identifier id="uid">uid</dc:identifier>
+    <dc:language>{language}</dc:language>
+  </metadata>
+  <manifest><item id="c0" href="ch0.xhtml" media-type="application/xhtml+xml"/></manifest>
+  <spine><itemref idref="c0"/></spine>
+</package>
+"""
+        with zipfile.ZipFile(buffer, "w") as zf:
+            zf.writestr("META-INF/container.xml",
+                '<?xml version="1.0"?><container version="1.0" '
+                'xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles>'
+                '<rootfile full-path="content.opf" '
+                'media-type="application/oebps-package+xml"/></rootfiles></container>')
+            zf.writestr("content.opf", opf)
+            zf.writestr("ch0.xhtml", (source / "ch0.xhtml").read_text("utf-8"))
+        return buffer.read_bytes()
+
+    chinese = parse_epub(make("und", "他把玫瑰留在原处。风从远处来。"))
+    assert chinese.language == "zh-CN"
+    english = parse_epub(make("und", "He left the house. She stayed behind."))
+    assert english.language == "en"
+    # 说了语言就照说的来
+    declared = parse_epub(make("fr", "Il est parti. Elle est restée."))
+    assert declared.language == "fr"

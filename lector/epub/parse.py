@@ -302,19 +302,58 @@ def parse_epub(data: bytes) -> ParsedBook:
                 )
             )
 
+        language = _resolve_language(package.language, chapters)
         default_chapter = chapters[0].id if chapters else "c0"
         toc = _resolve_toc(package, entries, href_to_chapter, default_chapter)
         cover_path = _find_cover(package, names)
         return ParsedBook(
             title=package.title or _stem(opf_path),
             author=package.creator or None,
-            language=package.language or None,
+            language=language,
             sha256=sha256,
             size_bytes=len(data),
             chapters=chapters,
             toc=toc,
             cover_path=cover_path,
         )
+
+
+#: 这些语言码等于"没说"，得自己看出来。
+_UNKNOWN_LANGUAGES = {"", "und", "zxx", "none", "null"}
+
+
+def _resolve_language(declared: str, chapters: list[ParsedChapter]) -> str | None:
+    """The language of the book.
+
+    Plenty of books declare nothing useful ("und").  The language matters —
+    it decides which voices the reader may pick — so when the book does not
+    say, we look at the text.
+    """
+    if declared and declared.strip().lower() not in _UNKNOWN_LANGUAGES:
+        return declared.strip()
+    return _guess_language(chapters)
+
+
+def _guess_language(chapters: list[ParsedChapter]) -> str | None:
+    """Guess the language from the text itself."""
+    cjk = 0
+    latin = 0
+    seen = 0
+    for chapter in chapters:
+        for block in chapter.blocks:
+            for sentence in block.sentences:
+                for char in sentence.text:
+                    code = ord(char)
+                    if 0x4E00 <= code <= 0x9FFF or 0x3400 <= code <= 0x4DBF:
+                        cjk += 1
+                    elif char.isalpha():
+                        latin += 1
+                seen += 1
+        if cjk + latin > 4000:
+            break
+    if cjk + latin < 6:
+        return None
+    return "zh-CN" if cjk > latin else "en"
 
 
 def _guess_title(blocks: list[RawBlock]) -> str:
