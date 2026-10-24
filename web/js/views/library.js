@@ -10,6 +10,24 @@ function localPercent(book) {
   return (prefs && prefs.position && prefs.position.percent) || 0;
 }
 
+function languageGroup(book) {
+  const family = (book.language || '').split('-')[0].toLowerCase();
+  if (family === 'en') return 'en';
+  if (family === 'zh') return 'zh';
+  return 'other';
+}
+
+function lastOpened(book) {
+  const value = state.bookPrefs[book.book_id]?.lastOpened;
+  return Number.isFinite(value) ? value : 0;
+}
+
+function compareBooks(left, right) {
+  const opened = lastOpened(right) - lastOpened(left);
+  if (opened) return opened;
+  return (left.title || '').localeCompare(right.title || '', 'zh-CN');
+}
+
 export class LibraryView {
   constructor(root, { onOpen }) {
     this.root = root;
@@ -32,8 +50,18 @@ export class LibraryView {
   render(books) {
     this.grid.replaceChildren();
     this.empty.hidden = books.length > 0;
-    for (const book of books) {
-      this.grid.append(this.card(book));
+    const groups = [
+      ['en', '英文'],
+      ['zh', '中文'],
+      ['other', '其他'],
+    ];
+    for (const [key, label] of groups) {
+      const items = books.filter((book) => languageGroup(book) === key).sort(compareBooks);
+      if (!items.length) continue;
+      this.grid.append(el('section', { class: 'book-section' }, [
+        el('h2', { class: 'book-section-title', text: label }),
+        el('div', { class: 'grid' }, items.map((book) => this.card(book))),
+      ]));
     }
   }
 

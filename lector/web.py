@@ -44,6 +44,7 @@ from lector.audio import AudioService
 logger = logging.getLogger("lector")
 
 API_PREFIX = "/api/v1"
+SHELL_ROUTE = re.compile(r"^b_[0-9a-f]{8}(?:/c\d+)?$")
 
 
 def build_engine(settings: Settings) -> TTSEngine:
@@ -192,7 +193,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if base:
             app.add_api_route(base, index, include_in_schema=False)
 
-        app.mount(base or "/", StaticFiles(directory=str(web_dir), html=True), name="web")
+        static_files = StaticFiles(directory=str(web_dir), html=True)
+
+        @app.get(f"{base}/{{frontend_path:path}}", include_in_schema=False)
+        async def frontend(frontend_path: str, request: Request):
+            """Serve static files and fall back to the shell for reader URLs."""
+            if frontend_path.startswith("api/"):
+                raise StarletteHTTPException(404)
+            try:
+                response = await static_files.get_response(frontend_path, request.scope)
+            except StarletteHTTPException as exc:
+                if exc.status_code == 404 and SHELL_ROUTE.fullmatch(frontend_path):
+                    return await index()
+                raise
+            if response.status_code != 404:
+                return response
+            if SHELL_ROUTE.fullmatch(frontend_path):
+                return await index()
+            raise StarletteHTTPException(404)
+
     return app
 
 

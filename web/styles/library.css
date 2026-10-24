@@ -24,6 +24,18 @@
   border-radius: var(--radius-lg);
 }
 
+.book-section + .book-section {
+  margin-top: var(--sp-8);
+}
+
+.book-section-title {
+  margin: 0 0 var(--sp-4);
+  font-size: 13px;
+  letter-spacing: .08em;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));

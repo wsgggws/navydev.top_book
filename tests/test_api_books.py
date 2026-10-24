@@ -231,6 +231,14 @@ def test_the_app_can_live_under_a_path(tmp_path, epub2_bytes: bytes):
     assert page.status_code == 200
     assert '<base href="/book/">' in page.text
     assert 'window.lectorBase="/book"' in page.text
+
+    # 书与章节都是可刷新、可分享的前端路径。
+    for route in ("/book/b_12345678", "/book/b_12345678/c12"):
+        shell = client.get(route)
+        assert shell.status_code == 200
+        assert '<base href="/book/">' in shell.text
+        assert 'window.lectorBase="/book"' in shell.text
+    assert client.get("/book/not-a-book").status_code == 404
     # 封面地址也带前缀（测试书没有封面，有的话必须是带前缀的）
     books = client.get("/book/api/v1/books").json()
     if books[0]["cover_url"]:

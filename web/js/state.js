@@ -10,7 +10,8 @@ const BOOK_KEY = 'lector.book';
 const BOOK_PREFS_KEY = 'lector.books';
 
 const DEFAULT_SETTINGS = {
-  theme: 'paper',
+  theme: 'sepia',
+  themeTouched: false,
   fontSize: 20,
   lineHeight: 1.9,
   paraSpacing: 0.9,
@@ -42,6 +43,9 @@ function loadSettings() {
     // 旧版本没有“用户主动选择过性别”的标记；迁移到新的男声默认值。
     if (saved.voiceGenderTouched !== true) {
       settings.voiceGender = DEFAULT_SETTINGS.voiceGender;
+    }
+    if (saved.themeTouched !== true) {
+      settings.theme = DEFAULT_SETTINGS.theme;
     }
     return settings;
   } catch (error) {

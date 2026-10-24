@@ -193,6 +193,7 @@ settings.gender.addEventListener('click', async (event) => {
 settings.theme.addEventListener('click', (event) => {
   const button = event.target.closest('button[data-theme]');
   if (!button) return;
+  state.settings.themeTouched = true;
   state.setSetting('theme', button.dataset.theme);
   applySettings();
 });
@@ -236,6 +237,7 @@ function cycleTheme() {
   const order = ['paper', 'sepia', 'night'];
   const index = order.indexOf(state.settings.theme);
   const next = index < 0 ? 0 : (index + 1) % order.length;
+  state.settings.themeTouched = true;
   state.setSetting('theme', order[next]);
   applySettings();
 }
@@ -258,7 +260,40 @@ const toc = new TocDrawer(dom.drawerToc, {
   onToast: toast,
 });
 
-function showLibrary() {
+function appBasePath() {
+  return (window.lectorBase || '').replace(/\/+$/, '');
+}
+
+function libraryUrl() {
+  return appBasePath() || '/';
+}
+
+function bookUrl(bookId, chapterId = null) {
+  const base = appBasePath();
+  const suffix = chapterId ? `/${bookId}/${chapterId}` : `/${bookId}`;
+  return `${base}${suffix}`;
+}
+
+function parseReaderRoute() {
+  const base = appBasePath();
+  let path = window.location.pathname;
+  if (base) {
+    if (path !== base && !path.startsWith(`${base}/`)) return {};
+    path = path.slice(base.length);
+  }
+  const parts = path.split('/').filter(Boolean);
+  if (!parts.length) return {};
+  return { bookId: parts[0], chapterId: parts[1] || null };
+}
+
+function updateUrl(bookId, chapterId = null, { replace = false } = {}) {
+  const url = bookId ? bookUrl(bookId, chapterId) : libraryUrl();
+  if (window.location.pathname === url && !window.location.search) return;
+  const method = replace ? 'replaceState' : 'pushState';
+  window.history[method]({ bookId, chapterId }, '', url);
+}
+
+function showLibrary({ fromRoute = false, replace = false } = {}) {
   dom.body.classList.remove('view-reader');
   dom.body.classList.add('view-library');
   dom.library.hidden = false;
@@ -269,9 +304,10 @@ function showLibrary() {
   dom.player.hidden = true;
   player.release();
   library.refresh();
+  if (!fromRoute || replace) updateUrl(null, null, { replace });
 }
 
-async function openBook(bookId) {
+async function openBook(bookId, { chapterId = null, fromRoute = false } = {}) {
   try {
     const payload = await api.getBook(bookId);
     // 换书就换书：上一本的音频要停掉，缓存也要清掉。
@@ -280,6 +316,8 @@ async function openBook(bookId) {
       if (state.cursor) reader.clearWords(state.cursor.sentence_id);
     }
     state.book = payload.book;
+    if (!fromRoute) updateUrl(bookId);
+    state.setPref(bookId, 'lastOpened', Date.now());
     state.rememberBook(bookId);
     dom.body.classList.remove('view-library');
     dom.body.classList.add('view-reader');
@@ -309,23 +347,35 @@ async function openBook(bookId) {
     rememberVoiceChoice();
     // 位置只认本地这一份：网页与终端各记各的，互不影响。
     const local = state.prefsFor(bookId).position;
-    const target = local
-      ? { chapter_id: local.chapter_id, sentence_id: local.sentence_id, word_index: local.word_index }
-      : null;
+    const sameChapter = local && (!chapterId || local.chapter_id === chapterId);
+    const target = chapterId
+      ? {
+          chapter_id: chapterId,
+          sentence_id: sameChapter ? local.sentence_id : null,
+          word_index: sameChapter ? local.word_index : null,
+        }
+      : (local
+          ? {
+              chapter_id: local.chapter_id,
+              sentence_id: local.sentence_id,
+              word_index: local.word_index,
+            }
+          : null);
     if (target) {
-      await loadChapter(target.chapter_id, target.sentence_id);
+      await loadChapter(target.chapter_id, target.sentence_id || null);
     } else {
       await openFirstReadableChapter();
     }
     if (target && target.word_index !== null && target.word_index !== undefined) {
       state.setCursor({ ...target, book_id: bookId }, 'restore');
     }
-    if (!target) {
+    if (!target || !target.sentence_id) {
       const first = state.sentences()[0];
       if (first) moveCursor(first.id);
     }
   } catch (error) {
     toast(error.message || '打开失败');
+    if (fromRoute) showLibrary({ fromRoute: true, replace: true });
   }
 }
 
@@ -381,6 +431,7 @@ async function loadChapter(chapterId, sentenceId = null) {
     if (sentenceId) {
       requestAnimationFrame(() => reader.jumpTo(sentenceId, { smooth: false }));
     }
+    updateUrl(state.book.book_id, chapterId, { replace: true });
     await loadTimeline(chapterId);
     warmAhead(chapterId);
   } catch (error) {
@@ -979,14 +1030,14 @@ async function handleShareCode() {
   if (!code) return false;
   try {
     const cursor = await api.resolveShortCode(code);
-    await openBook(cursor.book_id);
-    if (cursor.chapter_id && cursor.chapter_id !== (state.chapter && state.chapter.chapter_id)) {
-      await loadChapter(cursor.chapter_id, cursor.sentence_id);
-    } else if (cursor.sentence_id) {
+    await openBook(cursor.book_id, {
+      chapterId: cursor.chapter_id || null,
+      fromRoute: true,
+    });
+    if (cursor.sentence_id && state.findSentence(cursor.sentence_id)) {
       moveCursor(cursor.sentence_id);
       reader.jumpTo(cursor.sentence_id, { smooth: false });
     }
-    window.history.replaceState({}, '', window.location.pathname);
     return true;
   } catch (error) {
     toast('短码已失效');
@@ -1010,17 +1061,24 @@ async function start() {
   await library.refresh();
   const shared = await handleShareCode();
   if (shared) return;
-  // 接着上次读的那本：位置在服务器上，不该因为刷新丢掉。
-  const lastId = state.lastBookId();
-  if (!lastId) return;
-  try {
-    await openBook(lastId);
-  } catch (error) {
-    state.rememberBook('');
+  const route = parseReaderRoute();
+  if (route.bookId) {
+    await openBook(route.bookId, { chapterId: route.chapterId, fromRoute: true });
+    return;
   }
+  showLibrary({ fromRoute: true, replace: true });
 }
 
 // 调试用：控制台里能摸到当前状态与播放器。
 window.lector = { state, player, reader };
+
+window.addEventListener('popstate', async () => {
+  const route = parseReaderRoute();
+  if (route.bookId) {
+    await openBook(route.bookId, { chapterId: route.chapterId, fromRoute: true });
+  } else {
+    showLibrary({ fromRoute: true });
+  }
+});
 
 start();
