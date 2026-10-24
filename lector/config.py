@@ -25,7 +25,7 @@ MAX_EXPANSION_RATIO = 200
 #: Contract: a single sentence synthesis may not exceed this many seconds.
 TTS_SYNTH_TIMEOUT = 8.0
 
-DEFAULT_VOICE = "zh-CN-XiaoxiaoNeural"
+DEFAULT_VOICE = "zh-CN-YunxiNeural"
 
 #: 令牌可以带权限后缀：``<token>:admin``（默认）或 ``<token>:reader``。
 #: reader 只能读书与写自己的阅读进度（跨端接力要用），
@@ -34,9 +34,9 @@ SCOPE_ADMIN = "admin"
 SCOPE_READER = "reader"
 SCOPES = (SCOPE_ADMIN, SCOPE_READER)
 
-#: 每种语言默认读哪个音色。英文用美式男声，中文用普通话女声。
+#: 每种语言默认读哪个音色。中英文都默认使用男声。
 DEFAULT_VOICE_BY_LOCALE = {
-    "zh": "zh-CN-XiaoxiaoNeural",
+    "zh": "zh-CN-YunxiNeural",
     "en": "en-US-GuyNeural",
 }
 

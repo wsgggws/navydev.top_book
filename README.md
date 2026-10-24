@@ -79,7 +79,7 @@ make book books/my.epub      # 造一本书，并送进服务端
 | `LECTOR_HOST` | `127.0.0.1` | 监听地址；配置了令牌时默认 `0.0.0.0` |
 | `LECTOR_PORT` | `8000` | 端口 |
 | `LECTOR_TTS_ENGINE` | `edge` | `edge` / `espeak` / `auto` |
-| `LECTOR_VOICE` | `zh-CN-XiaoxiaoNeural` | 默认音色 |
+| `LECTOR_VOICE` | `zh-CN-YunxiNeural` | 默认音色（中文男声） |
 | `LECTOR_MAX_UPLOAD` | `52428800` | 上传上限（字节） |
 | `LECTOR_BASE_PATH` | 空 | 把应用挂在某个路径下（如 `/book`），nginx 那边路径要原样传过去 |
 
@@ -144,7 +144,7 @@ make book BOOK="books/某本书 (作者).epub"  # 路径带空格时用这种写
 
 ## 朗读音色
 
-音色跟着书的语言走：中文书默认中文（晓晓），英文书默认**美式男声**（Guy）。
+音色跟着书的语言走：中文书默认中文男声（云希），英文书默认**美式男声**（Guy）。
 界面只列十个常用音色（中文 4、美式 4、英式 2），在设置里随时换；
 换音色会清空该书的音频缓存重新预热。
 

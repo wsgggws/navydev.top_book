@@ -22,6 +22,11 @@ export class ReaderView {
     this.currentElement = null;
 
     this.settle = debounce(() => this._syncFromScroll(), 150);
+    this.settleResize = debounce(() => {
+      if (!this.locked || !this.currentElement) return;
+      this.ensureSentenceVisible(this.currentElement.dataset.sid, { smooth: false });
+    }, 150);
+    window.addEventListener('resize', this.settleResize);
     this.scroll.addEventListener('scroll', () => {
       if (this._programmaticScroll) {
         // 动画还没停，别把"程序在滚"当成"用户在滚"。
@@ -70,12 +75,15 @@ export class ReaderView {
 
   /**
    * 图片是后到的，撑开版式会把当前句挤走。
-   * 高亮还在，只是位置变了 —— 这里只重新标一次当前句，不动滚动。
+   * 高亮仍在原句；如果它因此离开可视区，就补一次最小滚动。
    */
   reanchor() {
     if (!this.currentElement) return;
     this.currentElement.classList.remove('is-current');
     this.currentElement.classList.add('is-current');
+    if (this.locked) {
+      this.ensureSentenceVisible(this.currentElement.dataset.sid, { smooth: false });
+    }
   }
 
   /** A heading that repeats the chapter title is shown only once. */
@@ -150,6 +158,30 @@ export class ReaderView {
     this.currentElement = node;
     if (!node) return;
     node.classList.add('is-current');
+  }
+
+  /**
+   * Keep the spoken sentence visible without taking over the page.
+   *
+   * If the sentence is already fully visible (and not behind the player bar),
+   * do nothing. Only an off-screen sentence is scrolled into the reading band.
+   */
+  ensureSentenceVisible(sentenceId, { smooth = true } = {}) {
+    const node = this.elementFor(sentenceId);
+    if (!node) return false;
+    const viewport = this.scroll.getBoundingClientRect();
+    const rect = node.getBoundingClientRect();
+    const player = document.querySelector('.player');
+    const playerRect = player && !player.hidden ? player.getBoundingClientRect() : null;
+    const bottom = playerRect
+      ? Math.min(viewport.bottom, playerRect.top)
+      : viewport.bottom;
+    const margin = 12;
+    if (rect.top >= viewport.top + margin && rect.bottom <= bottom - margin) {
+      return false;
+    }
+    this.scrollToNode(node, { smooth });
+    return true;
   }
 
   /** 撤掉一句里的逐词高亮，让它回到普通文字。 */

@@ -175,6 +175,7 @@ settings.indent.addEventListener('change', () => {
 settings.gender.addEventListener('click', async (event) => {
   const button = event.target.closest('button[data-gender]');
   if (!button) return;
+  state.settings.voiceGenderTouched = true;
   state.setSetting('voiceGender', button.dataset.gender);
   // 换了性别，之前挑的音色就不作数了，让它按语言与性别重新挑。
   state.setSetting('voiceId', '');
@@ -295,7 +296,10 @@ async function openBook(bookId) {
     if (typeof prefs.rate === 'number') state.settings.rate = prefs.rate;
     player.setRate(state.settings.rate);
     const family = languageFamily(state.book.language);
-    const saved = state.voices.find((voice) => voice.voice_id === prefs.voiceId);
+    // 自动挑中的旧音色不算用户选择；升级后要能切到新的默认男声。
+    const saved = state.settings.voiceTouched
+      ? state.voices.find((voice) => voice.voice_id === prefs.voiceId)
+      : null;
     const savedFits = saved
       && (!family || saved.locale.split('-')[0].toLowerCase() === family);
     // 记住的音色得是这本书这个语言的；不是就按语言与性别重新挑（空着让
@@ -568,9 +572,10 @@ const refreshTimeline = debounce(() => {
 
 player.onSentence = (sentenceId, words, granularity) => {
   reader.setWords(sentenceId, words, granularity);
-  // 只高亮，不滚动：文字停在哪由人决定，声音走到哪就高亮哪。
   reader.setCurrent(sentenceId);
   reader.locked = true;
+  // 当前句可见时不打扰阅读；翻到下一页或被播放器遮住时才滚回可视区。
+  reader.ensureSentenceVisible(sentenceId);
   if (state.cursor && state.cursor.sentence_id !== sentenceId) {
     state.setCursor({ ...state.cursor, sentence_id: sentenceId }, 'play');
     rememberPosition(state.cursor);
@@ -948,7 +953,7 @@ function matchVoice(language, gender) {
   const family = languageFamily(language)
     || (state.defaultVoice || 'zh-CN').split('-')[0].toLowerCase();
 
-  // 这门语言的默认音色；英文的默认是美式，所以女声也留在美式里挑。
+  // 先固定到这门语言的默认地区；再按用户选择的性别筛选。
   const byLanguage = (state.defaultVoices || {})[family];
   const defaultVoice = byLanguage
     ? state.voices.find((voice) => voice.voice_id === byLanguage)

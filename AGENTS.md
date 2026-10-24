@@ -148,7 +148,7 @@ books/my/
 - **进度写入**：网页防抖 600ms 后写 `localStorage`；终端写自己的
   `~/.config/lector/progress.json`。两端不互相覆盖。服务端 `/progress` 仅为
   API 兼容保留，内置客户端不再用它同步位置。
-- **音色跟着书的语言走**：中文书默认中文（`zh-CN-XiaoxiaoNeural`），英文书默认美式男声
+- **音色跟着书的语言走**：中文书默认中文男声（`zh-CN-YunxiNeural`），英文书默认美式男声
   （`en-US-GuyNeural`）。映射写在 `lector/config.py` 的 `DEFAULT_VOICE_BY_LOCALE`，
   客户端经 `GET /api/v1/meta` 的 `default_voices` 拿到同一份，不要各写一套。
 

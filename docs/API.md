@@ -203,9 +203,9 @@ uv run lector
 {
   "version": "1.0.0",
   "parser_version": 1,
-  "default_voice": "zh-CN-XiaoxiaoNeural",
-  "featured_voices": ["zh-CN-XiaoxiaoNeural", "en-US-AriaNeural"],
-  "default_voices": { "zh": "zh-CN-XiaoxiaoNeural", "en": "en-US-GuyNeural" },
+  "default_voice": "zh-CN-YunxiNeural",
+  "featured_voices": ["zh-CN-YunxiNeural", "en-US-GuyNeural"],
+  "default_voices": { "zh": "zh-CN-YunxiNeural", "en": "en-US-GuyNeural" },
   "scope": "admin"
 }
 ```
@@ -213,7 +213,7 @@ uv run lector
 - `scope` 是这个令牌拿到的权限：`admin` 或 `reader`。
 
 - `featured_voices` 是**界面上应当提供的常用音色**：中文（zh-CN）、美式（en-US）、英式（en-GB）各若干。引擎本身还有三百多个音色，`/tts/voices` 全部返回，客户端按需自选。
-- `default_voices` 是**按语言分的默认音色**：书是什么语言就用什么声音读，中文书用中文，英文书用美式男声。客户端不要自己猜，按这份表来。
+- `default_voices` 是**按语言分的默认音色**：中文书用中文男声，英文书用美式男声。客户端不要自己猜，按这份表来。
 
 ### `GET /api/v1/tts/voices`
 
@@ -221,7 +221,7 @@ uv run lector
 {
   "engine": "edge",
   "voices": [
-    { "voice_id": "zh-CN-XiaoxiaoNeural", "name": "晓晓", "locale": "zh-CN", "gender": "female", "engine": "edge" }
+    { "voice_id": "zh-CN-YunxiNeural", "name": "云希", "locale": "zh-CN", "gender": "male", "engine": "edge" }
   ]
 }
 ```
@@ -387,7 +387,7 @@ uv run lector
 批量预合成，请求：
 
 ```json
-{ "chapter_id": "c12", "voice_id": "zh-CN-XiaoxiaoNeural", "rate": "+0%", "limit": 12 }
+{ "chapter_id": "c12", "voice_id": "zh-CN-YunxiNeural", "rate": "+0%", "limit": 12 }
 ```
 
 - `chapter_id` 为 `null` 表示全书。

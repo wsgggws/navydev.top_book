@@ -20,7 +20,8 @@ const DEFAULT_SETTINGS = {
   gap: 0,
   voiceId: '',
   voiceTouched: false,
-  voiceGender: 'female',
+  voiceGender: 'male',
+  voiceGenderTouched: false,
 };
 
 function loadBookPrefs() {
@@ -36,7 +37,13 @@ function loadSettings() {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (!raw) return { ...DEFAULT_SETTINGS };
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    const saved = JSON.parse(raw);
+    const settings = { ...DEFAULT_SETTINGS, ...saved };
+    // 旧版本没有“用户主动选择过性别”的标记；迁移到新的男声默认值。
+    if (saved.voiceGenderTouched !== true) {
+      settings.voiceGender = DEFAULT_SETTINGS.voiceGender;
+    }
+    return settings;
   } catch (error) {
     return { ...DEFAULT_SETTINGS };
   }
