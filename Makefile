@@ -17,6 +17,8 @@ help:  ## 显示这份清单
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
+# 文件名里有空格时用 BOOK=... 的写法：
+#   make import BOOK="books/Metaphors We Live By.epub"
 book:  ## 生成一本书：make book books/some.epub
 	@target="$(lastword $(MAKECMDGOALS))"; \
 	 if [ "$$target" = "book" ]; then target="$(BOOK)"; fi; \
