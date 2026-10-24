@@ -1,10 +1,10 @@
 [project]
-name = "lector"
+name = "navydev.top_book"
 # 与 lector/config.py 的 APP_VERSION 保持一致。
 version = "1.0.0"
 description = "EPUB 阅读器 + 有声书播放器的服务端：解析、合成、HTTP 接口，以及网页端的前端资源"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn>=0.30",

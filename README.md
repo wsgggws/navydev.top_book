@@ -1,6 +1,10 @@
-# Lector
+# navydev.top_book
 
-EPUB 阅读器 + 有声书播放器。网页端读、网页端听、终端读、终端听——四个场景共用一份内容、一个阅读位置。
+**Lector** —— EPUB 阅读器 + 有声书播放器，线上地址是
+[navydev.top/book](https://navydev.top/book)。
+
+网页端读、网页端听、终端读、终端听。两端连接同一台内容服务，但各自记录
+自己的阅读位置和播放选项：网页存浏览器 `localStorage`，终端存本机缓存文件。
 
 **读到哪，听到哪。**
 
@@ -15,9 +19,9 @@ EPUB 阅读器 + 有声书播放器。网页端读、网页端听、终端读、
 
 ## 特色
 
-1. **一个游标** —— `Cursor = {book_id, chapter_id, sentence_id, word_index}` 同时驱动阅读游标线、卡拉OK逐词高亮、终端跟随与进度存储。
+1. **一个游标** —— 每一端都用 `Cursor = {book_id, chapter_id, sentence_id, word_index}` 表示位置，同时驱动当前句高亮、逐词高亮与本机进度。
 2. **句级 TTS** —— 每句独立合成并按内容哈希缓存，点句即听；词边界元数据支撑逐词跟读高亮。
-3. **跨端接力** —— 网页与终端读写同一份进度；终端 `s` 推送，网页刷新接着读。
+3. **两端独立** —— 网页与终端不共享阅读位置、音色或倍速；切换设备不会覆盖另一端的记录。
 4. **零依赖解析** —— 标准库直读 EPUB，自写 XSS 安全净化。
 
 ## 快速上手
@@ -54,7 +58,7 @@ make book books/my.epub      # 造一本书，并送进服务端
 
 打开 http://localhost:8000，把 `books/` 里的 EPUB 拖进去。
 
-终端端复用同一套 API 与同一份进度，默认连 `http://127.0.0.1:8000`；
+终端端复用同一套内容 API，默认连 `http://127.0.0.1:8000`；
 用 `LECTOR_URL` 与 `LECTOR_TOKEN` 改地址与令牌，或在书架屏按 `c` 填写。
 
 键位尽量照 vim 来：`hjkl` 移动、`Ctrl+d/u` 半页、`Ctrl+f/b` 整页、`/` 搜索、
@@ -80,7 +84,7 @@ make book books/my.epub      # 造一本书，并送进服务端
 ## 线上部署与终端接入
 
 服务要放到公网上，**必须设置 `LECTOR_TOKEN`** —— 未设置令牌时服务端只监听
-`127.0.0.1`，不会对外暴露；令牌同时也是终端端的接入凭证。
+`127.0.0.1`，但反向代理仍会把无鉴权接口暴露出去；令牌同时也是终端端的接入凭证。
 
 ```bash
 # 服务端
@@ -94,7 +98,7 @@ uv run lector-server
 
 ```bash
 # 一次性：环境变量
-LECTOR_URL=https://reader.example.com LECTOR_TOKEN=xxx uv run lector
+LECTOR_URL=https://navydev.top/book LECTOR_TOKEN=xxx uv run lector
 
 # 或者启动后按 c 交互式填写地址与令牌，记在 ~/.config/lector/reader.json
 uv run lector
@@ -141,8 +145,9 @@ make book BOOK="books/某本书 (作者).epub"  # 路径带空格时用这种写
 
 ## 部署上线
 
-见 **[docs/DEPLOY.md](docs/DEPLOY.md)**：uv 装依赖、systemd 跑进程、
-Caddy/nginx 管 TLS、数据备份与升级。`deploy/` 里有现成的配置文件。
+见 **[docs/DEPLOY.md](docs/DEPLOY.md)**：GitHub Actions 测试与原子发布、
+uv 装依赖、systemd 跑进程、中央 nginx 管 `/book` 路径与 TLS。
+`deploy/` 里有现成的 systemd 与环境变量配置。
 
 一句话版本：
 
@@ -162,20 +167,15 @@ uv run lector-server
 
 终端端只读，给它 `reader` 就够。
 
-## 跨端接力
+## 两端各自记录
 
-网页与终端读写**同一份进度**（SQLite 里的一行），所以两端始终在同一处接着读。
-
-| 端 | 自动 | 手动 |
+| 端 | 位置 | 每本书的选项 |
 | --- | --- | --- |
-| 终端 | 游标停下 1.2 秒后自动推送 | `s` 立即推送，`S` 立即拉取 |
-| 网页 | 游标停下 600ms 后自动推送；阅读时每 5 秒拉取一次 | 刷新页面即取到最新位置 |
+| 网页 | `localStorage` 的 `lector.books` | 音色、男/女声、倍速、进度 |
+| 终端 | `~/.config/lector/progress.json` | 终端自己的游标与百分比 |
 
-规则是**最后写入者胜**：两端同时在读时，以最后一次写入为准，界面上的
-`updated_by` 会告诉你刚才是哪一端动的。
-
-想从终端把书送进网页：终端按 `u`，输入本地 `.epub` 的路径；
-上传后两端看到的是同一本书、同一个位置。
+终端是只读客户端：可以浏览、搜索、播放和保存本机进度，但不能上传、删除书籍，
+也不能修改服务端音频缓存。两端切换书籍时互不影响。
 
 ## 结构
 
@@ -188,6 +188,7 @@ tests/           服务端的 pytest
 terminal/         终端端项目：自己的 pyproject.toml / uv.lock / Textual
 docs/            契约（API 与界面）
 deploy/          部署用的现成配置
+.github/         CI 与原子发布 workflow
 data/            运行时数据（git 忽略）
 ```
 
@@ -203,6 +204,6 @@ curl -s localhost:8000/api/v1/health | jq .
 
 ## 当前状态
 
-阶段 0–8 已实现：解析器、API、TTS、网页阅读与听书、进度接力、终端端与打磨。
+阶段 0–8 已实现：解析器、API、TTS、网页阅读与听书、两端独立进度、终端端与打磨。
 
 已知缺口见 [PROMPT.md](PROMPT.md) §7 的验收清单与本次提交的说明。

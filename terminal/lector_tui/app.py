@@ -1,7 +1,7 @@
 """The Textual application.
 
-Three screens — bookshelf, reading and listening — share one position, the
-same one the browser uses.
+Three screens — bookshelf, reading and listening — share one local position.
+The browser keeps its own position independently.
 """
 
 from __future__ import annotations
@@ -215,7 +215,7 @@ class LectorApp(App):
         """Show the key bindings."""
         self.notify(
             "hjkl 移动 · ←→ 换句 · gg/G 章首末 · Ctrl+d/u 半页 · / 搜索 · "
-            "Space 听书 · [ ] 换章 · s 同步 · S 拉取 · f 全屏 · m 主题 · q 返回",
+            "Space 听书 · [ ] 换章 · f 全屏 · m 主题 · q 返回",
             title="快捷键",
             timeout=8,
         )

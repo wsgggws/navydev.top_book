@@ -260,7 +260,7 @@ CSS 自定义属性，定义在 `web/styles/tokens.css`。三套主题只覆盖�
 │   第一节      │ ▎他把玫瑰留在原处。                       │
 │ ▸ 第四章      │  风从远处来。                             │
 ├───────────────┴──────────────────────────────────────────┤
-│ 第三章 星辰 · 12% · 句 128/312 · s 同步 · Space 听书  q 返回│
+│ 第三章 星辰 · 12% · 句 128/312 · Space 听书 · ? 帮助  q 返回│
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -303,8 +303,6 @@ CSS 自定义属性，定义在 `web/styles/tokens.css`。三套主题只覆盖�
 | 键 | 动作 |
 | --- | --- |
 | `Enter` | 打开选中的书 |
-| `u` | 上传本地 EPUB（输入路径） |
-| `d` | 删除选中的书 |
 | `r` | 刷新书架 |
 | `c` | 连接另一台服务器（输入地址与令牌，记在 `~/.config/lector/reader.json`） |
 | `q` / `Ctrl+C` | 退出 |
@@ -328,8 +326,6 @@ CSS 自定义属性，定义在 `web/styles/tokens.css`。三套主题只覆盖�
 | `Enter` | 跳到选中的目录项 | — |
 | `Tab` / `Ctrl+w` | 聚焦目录 / 在目录与正文间切换 | 同 |
 | `f` | 正文区全屏 / 还原成一页 | 同 |
-| `s` | 推送进度到服务器 | 同 |
-| `S` | 拉取服务器进度 | 同 |
 | `m` | 切换当前主题（纸白/羊皮/夜间） | 同 |
 | `?` | 显示快捷键帮助 | 同 |
 | `q` / `Ctrl+C` | 返回书架 | 返回阅读屏 |
@@ -351,8 +347,9 @@ CSS 自定义属性，定义在 `web/styles/tokens.css`。三套主题只覆盖�
 ```
 你在实现 Lector —— 一个 EPUB 阅读器 + 有声书播放器的界面层。
 
-先完整读 /Users/thj/epub-reader/docs/UI.md 与 /Users/thj/epub-reader/docs/API.md，
-再读 /Users/thj/epub-reader/AGENTS.md。三者冲突时以 docs/ 下的契约为准。
+先完整读 /Users/thj/github/navydev.top_book/docs/UI.md 与
+/Users/thj/github/navydev.top_book/docs/API.md，再读
+/Users/thj/github/navydev.top_book/AGENTS.md。三者冲突时以 docs/ 下的契约为准。
 
 【必须实现的】
 1. 网页端：书架页 + 阅读页 + 听书条 + 设置抽屉 + 目录抽屉 + 搜索。

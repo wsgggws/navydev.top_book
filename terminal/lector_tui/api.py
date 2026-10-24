@@ -28,8 +28,8 @@ class ApiClient:
     token: str = ""
 
     def _headers(self) -> dict[str, str]:
-        # The server records who moved the cursor, so the two ends can tell
-        # each other apart.
+        # Keep the client identity explicit for request logs and compatibility
+        # with the server's optional progress endpoints.
         headers = {"Accept": "application/json", "X-Lector-Client": "terminal"}
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"

@@ -1,18 +1,19 @@
 [Unit]
-Description=Lector — EPUB 阅读器 + 有声书播放器
+Description=navydev.top/book — Lector EPUB reader and audiobook player
 After=network.target
 
 [Service]
 Type=simple
 User=lector
 Group=lector
-WorkingDirectory=/opt/lector
+WorkingDirectory=/opt/navydev.top_book/current
 Environment=LECTOR_DATA_DIR=/var/lib/lector
 Environment=LECTOR_HOST=127.0.0.1
-Environment=LECTOR_PORT=8000
+Environment=LECTOR_PORT=8010
+Environment=LECTOR_BASE_PATH=/book
 # 令牌建议放到一个 600 权限的文件里，用 EnvironmentFile= 读。
 EnvironmentFile=-/etc/lector/env
-ExecStart=/opt/lector/.venv/bin/lector-server
+ExecStart=/opt/navydev.top_book/current/.venv/bin/lector-server
 Restart=always
 RestartSec=3
 

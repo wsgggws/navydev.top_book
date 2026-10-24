@@ -1,10 +1,14 @@
 # AGENTS.md
 
-你在维护 **Lector** —— 一个 EPUB 阅读器 + 有声书播放器，网页端与终端端共享同一份内容与同一个阅读位置。
+你在维护 **navydev.top_book（Lector）** —— 一个 EPUB 阅读器 + 有声书播放器。
+网页端与终端端共享同一台内容服务，但阅读位置和播放选项各自独立记录。
 
 ## 首要原则
 
-**位置只有一种表示。** 全书的阅读位置永远是 `Cursor = {book_id, chapter_id, sentence_id, word_index}`。阅读高亮、逐词高亮、终端跟随、进度存储、短码分享，全部是这一个游标的不同投影。任何新增的"位置"概念都是 bug，不是特性。
+**位置只有一种表示。** 每一端保存的阅读位置永远是
+`Cursor = {book_id, chapter_id, sentence_id, word_index}`。当前句高亮、逐词高亮、
+本机进度存储、短码分享，全部是这一个游标的不同投影。任何新增的"位置"概念都是
+bug，不是特性。
 
 ## 必读指针
 
@@ -61,6 +65,10 @@ make terminal        # 终端端
 make book books/my.epub     # 造一本书（或把已有的 EPUB 收进书架）
 make import books/my.epub   # 把已有的 EPUB 送进服务端
 ```
+
+线上发布由 `.github/workflows/deploy.yml` 完成：先跑两端测试，再上传 release，
+服务器解包到 `/opt/navydev.top_book/releases/<sha>`，切换 `current` 软链并重启
+`lector.service`。生产端口固定 `8010`，`LECTOR_BASE_PATH=/book`。
 
 - 每个项目各有自己的 `pyproject.toml` 与 `uv.lock`，都是该项目的依赖事实来源，都要提交。
 - `requirements.txt` 是由 `uv export --format requirements-txt --no-hashes --no-emit-project --output-file requirements.txt` 生成的产物，**不要手工编辑**。只在需要 pip 环境时用它。
@@ -134,19 +142,22 @@ books/my/
   用 reader 即可。
 - **依赖白名单**：`fastapi` `uvicorn` `pydantic` `edge-tts` `textual` `pytest` `httpx` `python-multipart`。新增依赖需要能回答"标准库为什么做不到"，并在提交说明里写清。
   - `python-multipart`：`docs/API.md` §3 规定上传端点是 `multipart/form-data`，FastAPI 解析 multipart 表单强制依赖它；标准库的 `email`/`cgi` 无法被 FastAPI 直接使用（`cgi` 已在 Python 3.13 移除）。
-- **进度写入**：客户端防抖 600ms。服务端按 `updated_at` 后写入者胜。
+- **进度写入**：网页防抖 600ms 后写 `localStorage`；终端写自己的
+  `~/.config/lector/progress.json`。两端不互相覆盖。服务端 `/progress` 仅为
+  API 兼容保留，内置客户端不再用它同步位置。
 - **音色跟着书的语言走**：中文书默认中文（`zh-CN-XiaoxiaoNeural`），英文书默认美式男声
   （`en-US-GuyNeural`）。映射写在 `lector/config.py` 的 `DEFAULT_VOICE_BY_LOCALE`，
   客户端经 `GET /api/v1/meta` 的 `default_voices` 拿到同一份，不要各写一套。
 
 ## 约定
 
-- Python 3.11+，全程类型注解。DTO 用 Pydantic，定义集中在 `lector/models.py`，与 `docs/API.md` 逐字段对应，不设字段别名。
+- Python 3.12，全程类型注解。DTO 用 Pydantic，定义集中在 `lector/models.py`，与 `docs/API.md` 逐字段对应，不设字段别名。
 - 网页端是原生 ES Modules + CSS：每个文件一个职责，`views/` 放页面级模块，`util.js` 放纯函数。不引入框架或 UI 库。
 - 终端端用 Textual：屏幕放 `screens/`，与 `web/js/views/` 一一对应。
 - 命名：API 字段 `snake_case`；Python `snake_case`；JS `camelCase`。
 - 注释解释**为什么**，不解释**做了什么**。能自解释的代码不写注释。
 - 提交前跑 `pytest -q`，必须全绿。绿的截图/日志贴进汇报。
+- CI/CD 使用 uv 和 GitHub Actions；不要改成 pip/requirements 的运行时安装流程。
 
 ## 常见坑
 
@@ -156,7 +167,8 @@ books/my/
 - **TTS 的词边界是字素偏移**，需要归一化到词级，再换算成句内相对秒数。回退引擎（espeak）没有词边界，`granularity` 降为 `"sentence"`，前端相应不做词级拆分。
 - **音频 URL 不可变**：`audio/{sentence_id}.mp3` 的内容随内容哈希固定，可长期 `immutable` 缓存。换音色后要清缓存（`DELETE /books/{id}/audio`）。
 - **`audio_duration` 与实际时长可能不等**：合成器对同一段文本两次生成的时长略有差异。以 `timeline` 接口返回的 `start`/`end` 为准，不要用章节元数据里的 `audio_duration` 做播放定位。
-- **进度写入风暴**：拖动滚动条会连续触发 PUT。前端必须防抖，服务端也不要在同秒内反复改写 `updated_at`。
+- **进度写入风暴**：网页拖动阅读位置会连续变化，必须防抖 600ms 后才写
+  `localStorage`；终端只在游标稳定后写本地文件。
 
 ## 完成判据
 

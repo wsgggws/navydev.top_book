@@ -5,9 +5,9 @@
 [project]
 name = "lector-tui"
 version = "1.0.0"
-description = "Lector 的终端端：读书、听书、和网页端共用同一个阅读位置"
+description = "Lector 的只读终端端：读书、听书、独立记录本机阅读位置"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "textual>=0.80",
 ]

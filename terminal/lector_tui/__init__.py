@@ -1,7 +1,7 @@
 """Lector — the terminal client.
 
-It talks to the same API as the browser and writes to the same progress, so
-a reader can move between the two without losing their place.
+It talks to the same content API as the browser, but keeps its reading position
+in a local progress file so the two clients never overwrite each other.
 """
 
 from lector_tui.app import LectorApp

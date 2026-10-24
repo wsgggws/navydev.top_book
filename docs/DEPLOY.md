@@ -1,215 +1,177 @@
 # 部署上线
 
-Lector 是个自托管的服务：一个 Python 进程 + 一个 SQLite + 一个数据目录。
-下面是最省事也最稳的一套：uv 管依赖，systemd 管进程，Caddy 管 TLS。
+`navydev.top_book`（应用名仍是 Lector）是一个 Python 进程 + SQLite + 数据目录，
+线上挂在 `https://navydev.top/book/`。仓库提供两条部署路径：
 
-## 0. 一分钟版本
+- 本地开发：`uv run lector-server`，默认 `127.0.0.1:8000`。
+- 线上生产：GitHub Actions 测试后发布到 `/opt/navydev.top_book`，systemd 以
+  `127.0.0.1:8010` 运行，中央 nginx 把 `/book/` 原样代理过去。
+
+## 1. 本地环境
 
 ```bash
-# 服务器上
-git clone <你的仓库> /opt/lector && cd /opt/lector
-uv sync --frozen
-
-export LECTOR_TOKEN="$(openssl rand -hex 24)"   # 记下来，两端都要用
-export LECTOR_DATA_DIR=/var/lib/lector
-export LECTOR_HOST=127.0.0.1                     # 只给反向代理看
-export LECTOR_PORT=8000
+uv sync
 uv run lector-server
 ```
 
-浏览器打开 `http://127.0.0.1:8000` 就能用了。
+浏览器打开 <http://127.0.0.1:8000/>。生产配置由
+`/etc/lector/env` 提供，不写进仓库。
 
-> **令牌是必须的。** 没有 `LECTOR_TOKEN` 时服务端只监听 `127.0.0.1`，
-> 外面访问不到；设了令牌以后 `/api/v1/*`（`/health` 除外）都要带
-> `Authorization: Bearer <token>`。
-
-## 1. 目录与数据
+## 2. 数据目录
 
 | 路径 | 内容 | 要不要备份 |
 | --- | --- | --- |
-| `$LECTOR_DATA_DIR/lector.db` | SQLite：书、进度、搜索索引、短码 | **要** |
-| `$LECTOR_DATA_DIR/books/<id>/` | 原始 EPUB 与解析后的章节 | 可以从 EPUB 重来 |
-| `$LECTOR_DATA_DIR/audio/` | 句砖音频缓存 | 不用（丢了会重新合成） |
+| `/var/lib/lector/lector.db` | SQLite：书、进度接口数据、搜索索引、短码 | **要** |
+| `/var/lib/lector/books/<id>/` | 原始 EPUB 与解析后的章节 | 可以从 EPUB 重来 |
+| `/var/lib/lector/audio/` | 句级音频缓存 | 不用，丢失后会重新合成 |
 
-真正不能丢的是 `lector.db` 里的**进度**。备份就一件事：
-
-```bash
-sqlite3 "$LECTOR_DATA_DIR/lector.db" ".backup '/backup/lector-$(date +%F).db'"
-```
-
-## 1.1 挂在某个路径下（可选）
-
-应用可以挂在域名下的某个路径，比如 `https://navydev.top/book`：
+备份：
 
 ```bash
-export LECTOR_BASE_PATH=/book
+sudo sqlite3 /var/lib/lector/lector.db \
+  ".backup '/backup/lector-$(date +%F).db'"
 ```
 
-服务端会把接口放在 `/book/api/v1`、静态资源放在 `/book/`，
-短码链接也变成 `/book/s/<code>`；网页端从服务端拿到的基路径里知道这些。
+## 3. GitHub Actions CI
 
-nginx 那边 **路径要原样传过去**：
+`.github/workflows/ci.yml` 在每次 push 到 `main` 和 Pull Request 时运行：
 
-```nginx
-location /book/ {
-    proxy_pass http://lector_app;      # 后面不能带斜杠
-    ...
-}
-```
+1. 固定 Python 3.12；
+2. `pip install uv`；
+3. 根项目 `uv sync --frozen` 并运行服务端测试；
+4. `terminal/` 独立 `uv sync --frozen` 并运行终端测试。
 
-带斜杠等于把 `/book` 前缀吃掉，应用就找不到自己的接口了。
+两个项目仍是独立的 `pyproject.toml` / `uv.lock`，CI 不会把终端代码装进服务端
+运行时。
 
-## 2. systemd
+## 4. GitHub Actions CD
 
-`deploy/lector.service`：
+`.github/workflows/deploy.yml` 在 push 到 `main`、推送 `v*.*.*` tag，或手工触发
+时发布。发布前先在同一个 workflow 里重跑两端测试。
+
+仓库需要配置这些 Actions secrets：
+
+| Secret | 用途 |
+| --- | --- |
+| `REMOTE_IP` | 服务器地址 |
+| `SSH_USER` | SSH 用户 |
+| `SSH_PRIVATE_KEY` | 对应私钥 |
+| `LECTOR_TOKEN` | 服务端访问令牌，建议形如 `<随机值>:admin` |
+
+服务器首次部署前需要满足：
+
+- 已安装 `uv`，且 SSH 用户执行 `command -v uv` 能找到它；
+- SSH 用户可以使用 `sudo`；
+- 已由 nginx-config 配好 `navydev.top` 的证书和 `/book/` 路由；
+- 如果已有 `/var/lib/lector`，保留它，发布不会清空数据。
+
+发布过程：
+
+1. 把 `pyproject.toml`、`uv.lock`、`lector/`、`web/` 与 systemd unit 打包；
+2. 上传到 `/tmp/navydev.top_book-<sha>/`；
+3. 在服务器解包到 `/opt/navydev.top_book/releases/<sha>/`；
+4. 在该 release 内执行 `uv sync --frozen --no-dev`；
+5. 原子切换 `/opt/navydev.top_book/current`，重启 `lector.service`；
+6. 轮询 `/book/api/v1/health`，失败则切回上一个 release。
+
+systemd 固定配置：
 
 ```ini
-[Unit]
-Description=Lector
-After=network.target
-
-[Service]
-Type=simple
-User=lector
-Group=lector
-WorkingDirectory=/opt/lector
-Environment=LECTOR_DATA_DIR=/var/lib/lector
-Environment=LECTOR_HOST=127.0.0.1
-Environment=LECTOR_PORT=8000
-Environment=LECTOR_TOKEN=换成你的令牌
-# 挂在路径下时才需要：Environment=LECTOR_BASE_PATH=/book
-ExecStart=/opt/lector/.venv/bin/lector-server
-Restart=always
-RestartSec=3
-
-# 只需要读代码目录，数据目录可写
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=/var/lib/lector
-
-[Install]
-WantedBy=multi-user.target
+WorkingDirectory=/opt/navydev.top_book/current
+EnvironmentFile=-/etc/lector/env
+ExecStart=/opt/navydev.top_book/current/.venv/bin/lector-server
 ```
 
-```bash
-sudo useradd --system --home /opt/lector --shell /usr/sbin/nologin lector
-sudo mkdir -p /var/lib/lector && sudo chown lector:lector /var/lib/lector
-sudo cp deploy/lector.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now lector
-sudo systemctl status lector
+`/etc/lector/env` 由 workflow 以 600 权限写入：
+
+```dotenv
+LECTOR_TOKEN=<你的令牌>
+LECTOR_DATA_DIR=/var/lib/lector
+LECTOR_HOST=127.0.0.1
+LECTOR_PORT=8010
+LECTOR_BASE_PATH=/book
+LECTOR_TTS_ENGINE=edge
 ```
 
-## 3. 反向代理与 TLS
+## 5. nginx
 
-### Caddy（最省事，自动续证书）
-
-`deploy/Caddyfile`：
-
-```
-reader.example.com {
-    reverse_proxy 127.0.0.1:8000
-}
-```
-
-```bash
-sudo cp deploy/Caddyfile /etc/caddy/Caddyfile
-sudo systemctl reload caddy
-```
-
-### nginx
-
-`deploy/nginx.conf`：
+站点配置的唯一事实来源是同级仓库 `../nginx-config` 的
+`config/nginx/conf.d/navydev-top.conf`。关键配置：
 
 ```nginx
-server {
-    listen 443 ssl http2;
-    server_name reader.example.com;
+upstream lector_app {
+    server 127.0.0.1:8010;
+    keepalive 32;
+}
 
-    ssl_certificate     /etc/letsencrypt/live/reader.example.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/reader.example.com/privkey.pem;
-
-    client_max_body_size 60m;   # 上传上限 50MB，留点余量
-
-    location / {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_read_timeout 120s;   # 合成音频可能慢一点
-    }
+location /book/ {
+    # LECTOR_BASE_PATH=/book，代理时不能剥掉前缀。
+    proxy_pass http://lector_app;
+    proxy_read_timeout 120s;
 }
 ```
 
-## 4. 权限分级
+HTTP/2 使用 nginx 1.18 支持的 `listen 443 ssl http2;`。音频与上传接口有单独的
+较长超时；静态 CSS/JS 在 nginx 层缓存。
 
-令牌可以带权限后缀：
+## 6. 终端连接线上服务
 
-| 令牌 | 能做什么 |
-| --- | --- |
-| `<token>` 或 `<token>:admin` | 全部：读、上传、删除、预热音频、清缓存、写进度 |
-| `<token>:reader` | 读 + 写自己的阅读进度（跨端接力要用），**不能**上传/删除书、不能动音频缓存 |
-
-**终端端用 `reader` 就够了** —— 它只是读书和记下自己读到哪。
+终端只读，不提供上传、删除或缓存管理入口：
 
 ```bash
-# 终端（它在自己的项目目录里，只需要 textual 一个依赖）
-cd terminal && uv sync
-LECTOR_URL=https://reader.example.com LECTOR_TOKEN=你的令牌:reader uv run lector
-```
-
-在终端的书架屏按 `c` 也能交互式填地址与令牌，存在 `~/.config/lector/reader.json`（权限 600）。
-
-被拒绝的写操作会得到 `403 FORBIDDEN`；令牌不对是 `401 UNAUTHORIZED`。
-
-## 5. 终端接线上服务
-
-```bash
+cd terminal
+uv sync
+LECTOR_URL=https://navydev.top/book \
+LECTOR_TOKEN=你的令牌 \
 uv run lector
-# 书架屏按 c → 填 https://reader.example.com 与令牌
 ```
 
-终端只读，不上传也不删书；它只把自己的阅读位置推给服务器，网页端每 5 秒拉一次，
-两端因此始终在同一处接着读。
+也可以启动后按 `c` 填地址和令牌，配置保存在
+`~/.config/lector/reader.json`（权限 600）。终端自己的阅读位置保存在
+`~/.config/lector/progress.json`，与网页端 `localStorage` 完全独立。
 
-## 6. 升级
+## 7. 权限分级
+
+| 服务端配置 | 客户端发送 | 能力 |
+| --- | --- | --- |
+| `<token>` / `<token>:admin` | `<token>` | 读、上传、删除、预热音频、清缓存 |
+| `<token>:reader` | `<token>` | 读；不能上传、删除或管理音频缓存 |
+
+权限后缀只写在服务器 `/etc/lector/env` 中，客户端只发送密钥本身。
+
+## 8. 手动运维
 
 ```bash
-cd /opt/lector
-git pull
-uv sync --frozen
+# 查看状态与日志
+sudo systemctl status lector
+sudo journalctl -u lector -f
+
+# 查看当前 release 和可用版本
+readlink -f /opt/navydev.top_book/current
+ls -1dt /opt/navydev.top_book/releases/*
+
+# 健康检查
+curl -fsS http://127.0.0.1:8010/book/api/v1/health
+
+# nginx 配置变更后
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+回滚只需把 `current` 指回上一个 release 并重启服务：
+
+```bash
+sudo ln -sfn /opt/navydev.top_book/releases/<旧-sha> \
+  /opt/navydev.top_book/current.next
+sudo mv -Tf /opt/navydev.top_book/current.next /opt/navydev.top_book/current
 sudo systemctl restart lector
 ```
 
-数据目录不动，升级不影响书与进度。
+## 9. 注意事项
 
-## 7. 看着它
-
-```bash
-curl -s https://reader.example.com/api/v1/health | jq .
-```
-
-```json
-{
-  "status": "ok",
-  "version": "1.0.0",
-  "parser_version": 1,
-  "tts": { "engine": "edge", "available": true, "voice_count": 322 },
-  "books": 12
-}
-```
-
-`status` 为 `degraded` 说明 TTS 不可用（读没问题，听不了）；为 `error` 说明
-服务本身有问题。`/health` 不需要令牌，可以直接拿来做探活。
-
-## 8. 几个要注意的地方
-
-- **别把 `LECTOR_DATA_DIR` 放在临时盘上**，进度会丢。
-- **令牌别写进仓库**，用 systemd 的 `EnvironmentFile=` 读一个 600 权限的文件更稳。
-- **上传上限 50MB**（`LECTOR_MAX_UPLOAD` 可调），反向代理的 body 限制要跟着放大。
-- **限流**按客户端 IP：上传 10 次/分钟，其余读接口 600 次/分钟。终端一次拖动
-  不会触发限流（它只写进度）。
-- **音频缓存**按内容哈希存，换音色后旧的缓存还在，只是不会被命中；要清就调
-  `DELETE /api/v1/books/{id}/audio`（需要 admin 令牌）。
+- **不要删除 `/var/lib/lector`**，书库、音频缓存和进度数据都在这里。
+- `LECTOR_TOKEN` 必须配置；否则反向代理会公开一个无鉴权实例。
+- 上传上限 50MB，nginx 的 `client_max_body_size` 要留出余量。
+- 音频 URL 的内容由文本、音色、倍速与引擎版本共同决定，可长期缓存。
+- 换音色后不必手工删旧文件；缓存键变了，旧缓存只是不再命中。
+- 音频第一次可能现场合成；nginx `/book/api/v1/books/.../audio/` 的超时已放宽到
+  120 秒，客户端也会提前预热下一小段。
