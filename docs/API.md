@@ -15,7 +15,7 @@
 | ID | 字符串。`book_id` 形如 `b_9f3a2c1d`；章节 `c{index}`；块 `c12.b3`；句 `c12.b3.s0` |
 | 鉴权 | 阅读接口公开。上传、删除、预热/清理音频等管理写操作在配置 `LECTOR_TOKEN` 后要求 `Authorization: Bearer <token>` |
 | 分页 | 列表接口用 `?limit=&offset=`，`limit` 默认 50、上限 200 |
-| 排序 | 列表默认按 `updated_at DESC`；不接受客户端自定义排序参数 |
+| 排序 | 书籍列表默认按 `open_count DESC, updated_at DESC`；不接受客户端自定义排序参数 |
 
 ### 0.1 成功响应
 
@@ -46,6 +46,8 @@
 | 400 | `BAD_REQUEST` | 请求体无法解析或参数非法 | 展示 `message`，不重试 |
 | 401 | `UNAUTHORIZED` | 管理写操作缺少或错误的 Bearer token | 只在管理操作时提示 token |
 | 403 | `FORBIDDEN` | 令牌有效但权限不够（如 reader 令牌想上传） | 换个权限更高的令牌 |
+| 403 | `BROWSER_ONLY` | 明显的命令行客户端请求网页 | 用浏览器打开 |
+| 403 | `SAME_ORIGIN_REQUIRED` | 无有效 Bearer token 的写请求缺少同源浏览器来源 | 从网页发起，或使用管理 token |
 | 404 | `NOT_FOUND` | 资源不存在 | 返回书架 |
 | 409 | `ALREADY_EXISTS` | 冲突（如书名重复上传且策略为拒绝） | 提示并引导到既有条目 |
 | 413 | `PAYLOAD_TOO_LARGE` | 上传超过 50MB | 提示改用小文件 |
@@ -92,6 +94,18 @@ uv run lector
 
 按客户端 IP：上传接口 10 次/分钟，其余读接口 600 次/分钟。超限返回 429 与 `Retry-After`（秒）。写接口命中限流时**不做**自动重试。
 
+配置 `LECTOR_TOKEN` 后还启用以下浏览器防护：
+
+- 网页、静态资源和公开 API 拒绝明显的 `curl`、`wget`、`python-requests`、
+  `httpx` 等命令行 User-Agent；这是降低脚本滥用的基础措施，不能替代鉴权。
+- 健康检查、带有效 Bearer token 的 CLI，以及带 `X-Lector-Client: terminal`
+  的官方终端客户端不受上述 User-Agent 拦截。
+- 无有效 Bearer token 的 `POST`/`PUT`/`PATCH`/`DELETE` 必须带同源
+  `Origin` 或 `Referer`，且 `Sec-Fetch-Site` 不得为跨站。
+- 响应统一带 CSP、`X-Frame-Options: SAMEORIGIN`、`nosniff`、Referrer Policy 与
+  Permissions Policy。
+- 公开只读 API 仍允许终端客户端访问；需要管理写权限的 CLI 必须使用 Bearer token。
+
 ---
 
 ## 1. 核心模型
@@ -109,6 +123,7 @@ uv run lector
   "cover_url": "/api/v1/books/b_9f3a2c1d/cover",
   "chapter_count": 27,
   "sentence_count": 8421,
+  "open_count": 12,
   "progress": 0.423,
   "tts_state": "ready",
   "created_at": "2026-10-24T08:00:00Z",
@@ -262,6 +277,7 @@ uv run lector
 ### `GET /api/v1/books`
 
 裸数组，`Book[]`。支持 `?limit=&offset=`。
+默认按 `open_count DESC, updated_at DESC` 排序。
 
 ### `GET /api/v1/books/{book_id}`
 
@@ -272,6 +288,20 @@ uv run lector
 ### `DELETE /api/v1/books/{book_id}`
 
 删除书籍、其解析产物与音频缓存。需要 admin 令牌。返回 `204`。不存在时 `404`。
+
+### `POST /api/v1/books/{book_id}/open`
+
+记录一次书籍打开，供书架在本地最近阅读时间相同的情况下按热度排序。
+
+```json
+{ "book_id": "b_9f3a2c1d", "open_count": 13 }
+```
+
+- 公开接口，不需要令牌。
+- 每次成功调用把该书 `open_count` 加一；书籍不存在返回 `404`。
+- 客户端只在用户主动打开书籍时调用；直接刷新书籍 URL 或浏览器前进/后退不计数。
+- 配置了 `LECTOR_TOKEN` 时，浏览器写请求还必须带同源 `Origin` 或 `Referer`；
+  带有效 Bearer token 的 CLI 管理请求可以不带。
 
 ### `GET /api/v1/books/{book_id}/cover`
 

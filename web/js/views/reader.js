@@ -132,6 +132,10 @@ export class ReaderView {
     return this.sentenceNodes.get(sentenceId) || null;
   }
 
+  firstSentenceId() {
+    return this.order[0] || null;
+  }
+
   /**
    * Mark a scroll as ours.
    *

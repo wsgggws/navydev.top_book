@@ -1,7 +1,45 @@
 /* 阅读列、游标线与逐词高亮 */
 
-.reader-scroll {
+.reader {
+  display: flex;
+  flex-direction: column;
+}
+
+.reading-progress {
+  flex: none;
+  position: relative;
+  padding: 5px var(--sp-4) 7px;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  border-bottom: 1px solid var(--border);
+}
+
+.reading-progress-track {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: var(--border);
+}
+
+.reading-progress-track span {
+  display: block;
+  width: 0;
   height: 100%;
+  background: var(--accent);
+  transition: width 240ms linear;
+}
+
+.reading-progress-copy {
+  display: flex;
+  justify-content: flex-start;
+  gap: var(--sp-4);
+  color: var(--text-dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.reader-scroll {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   scroll-behavior: auto;
 }
@@ -114,6 +152,8 @@ body.is-playing .column { cursor: default; }
 .sent:hover { background: var(--accent-soft); }
 
 @media (max-width: 639px) {
+  .reading-progress { padding-inline: var(--sp-3); }
+  .reading-progress-copy { font-size: 10px; }
   .column {
     padding: var(--sp-4) var(--sp-4) calc(var(--player-h) + 24vh);
   }

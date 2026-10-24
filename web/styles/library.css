@@ -95,18 +95,6 @@
   border-radius: var(--radius-lg);
 }
 
-.book-section + .book-section {
-  margin-top: var(--sp-8);
-}
-
-.book-section-title {
-  margin: 0 0 var(--sp-4);
-  font-size: 13px;
-  letter-spacing: .08em;
-  color: var(--text-dim);
-  font-weight: 600;
-}
-
 .grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -176,6 +164,7 @@
 }
 
 .card-progress {
+  flex: 1;
   height: 3px;
   border-radius: 2px;
   background: var(--border);
@@ -184,6 +173,20 @@
 .card-progress-fill {
   height: 100%;
   background: var(--accent);
+}
+
+.card-progress-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.card-progress-value {
+  flex: none;
+  color: var(--text-faint);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .empty {

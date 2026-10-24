@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS books (
     chapter_count  INTEGER NOT NULL DEFAULT 0,
     sentence_count INTEGER NOT NULL DEFAULT 0,
     word_count     INTEGER NOT NULL DEFAULT 0,
+    open_count     INTEGER NOT NULL DEFAULT 0,
     voice_id       TEXT,
     tts_state      TEXT NOT NULL DEFAULT 'pending',
     created_at     TEXT NOT NULL,
@@ -146,6 +147,13 @@ class Database:
         conn = self.connect()
         with self._write_lock:
             conn.executescript(SCHEMA)
+            columns = {
+                row["name"] for row in conn.execute("PRAGMA table_info(books)").fetchall()
+            }
+            if "open_count" not in columns:
+                conn.execute(
+                    "ALTER TABLE books ADD COLUMN open_count INTEGER NOT NULL DEFAULT 0"
+                )
 
     def query(self, sql: str, params: tuple = ()) -> list[sqlite3.Row]:
         return list(self.connect().execute(sql, params).fetchall())

@@ -19,7 +19,7 @@ from lector.api.deps import (
 )
 from lector.api.errors import ApiError, epub_invalid
 from lector.epub.errors import EpubError, EpubNotAZipError
-from lector.models import Book, BookDetailResponse, UploadResponse
+from lector.models import Book, BookDetailResponse, BookOpenResponse, UploadResponse
 
 router = APIRouter(tags=["books"])
 
@@ -121,6 +121,20 @@ async def get_book(
 
     progress = read_progress(ctx, book_id)
     return BookDetailResponse(book=book, progress=progress)
+
+
+@router.post("/books/{book_id}/open", response_model=BookOpenResponse)
+async def record_open(
+    book_id: str,
+    request: Request,
+) -> BookOpenResponse:
+    """Count one user-initiated book open."""
+    ctx = get_context(request)
+    ctx.limiter.check("book-open", client_address(request), 60)
+    count = ctx.store.record_open(book_id)
+    if count is None:
+        raise ApiError(404, "NOT_FOUND", "书籍不存在", {"book_id": book_id})
+    return BookOpenResponse(book_id=book_id, open_count=count)
 
 
 @router.delete("/books/{book_id}", status_code=204)

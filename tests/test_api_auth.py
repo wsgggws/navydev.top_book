@@ -42,6 +42,7 @@ def test_upload_still_needs_the_admin_token(client_for, epub2_bytes: bytes):
     response = client.post(
         "/api/v1/books",
         files={"file": ("book.epub", epub2_bytes, "application/epub+zip")},
+        headers={"Origin": "http://testserver"},
     )
     assert response.status_code == 401
 

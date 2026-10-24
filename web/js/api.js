@@ -51,6 +51,7 @@ export const api = {
 
   listBooks: () => request('/books'),
   getBook: (bookId) => request(`/books/${bookId}`),
+  recordOpen: (bookId) => request(`/books/${bookId}/open`, { method: 'POST' }),
 
   getToc: (bookId) => request(`/books/${bookId}/toc`),
   getChapter: (bookId, chapterId) => request(`/books/${bookId}/chapters/${chapterId}`),

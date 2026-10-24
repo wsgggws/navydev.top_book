@@ -6,7 +6,7 @@ import { Player } from './player.js';
 import { LibraryView } from './views/library.js';
 import { ReaderView } from './views/reader.js';
 import { TocDrawer } from './views/toc.js';
-import { clamp, debounce, el, formatTime, isTypingTarget } from './util.js';
+import { clamp, debounce, el, formatTime, isTypingTarget, splitWords } from './util.js';
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -22,6 +22,8 @@ const dom = {
   btnSettings: $('#btn-settings'),
   library: $('#library'),
   reader: $('#reader'),
+  readingChapterFill: $('#reading-chapter-fill'),
+  readingChapterTime: $('#reading-chapter-time'),
   drawerToc: $('#drawer-toc'),
   drawerSettings: $('#drawer-settings'),
   overlay: $('#overlay'),
@@ -316,7 +318,20 @@ async function openBook(bookId, { chapterId = null, fromRoute = false } = {}) {
       if (state.cursor) reader.clearWords(state.cursor.sentence_id);
     }
     state.book = payload.book;
-    if (!fromRoute) updateUrl(bookId);
+    if (!fromRoute) {
+      updateUrl(bookId);
+      void api.recordOpen(bookId)
+        .then((result) => {
+          const known = state.books.find((book) => book.book_id === bookId);
+          if (known) known.open_count = result.open_count;
+          if (state.book && state.book.book_id === bookId) {
+            state.book.open_count = result.open_count;
+          }
+        })
+        .catch(() => {
+          // 计数失败不影响打开书籍。
+        });
+    }
     state.setPref(bookId, 'lastOpened', Date.now());
     state.rememberBook(bookId);
     dom.body.classList.remove('view-library');
@@ -366,12 +381,22 @@ async function openBook(bookId, { chapterId = null, fromRoute = false } = {}) {
     } else {
       await openFirstReadableChapter();
     }
-    if (target && target.word_index !== null && target.word_index !== undefined) {
-      state.setCursor({ ...target, book_id: bookId }, 'restore');
-    }
-    if (!target || !target.sentence_id) {
-      const first = state.sentences()[0];
-      if (first) moveCursor(first.id);
+    if (target && target.sentence_id && reader.elementFor(target.sentence_id)) {
+      const restored = {
+        ...target,
+        book_id: bookId,
+        word_index: target.word_index ?? null,
+      };
+      state.setCursor(restored, 'restore');
+      reader.setCurrent(target.sentence_id);
+      rememberPosition(restored);
+      measureProgress();
+      updateReadingProgress();
+    } else {
+      const first = reader.firstSentenceId();
+      if (first && (!state.cursor || !reader.elementFor(state.cursor.sentence_id))) {
+        moveCursor(first);
+      }
     }
   } catch (error) {
     toast(error.message || '打开失败');
@@ -397,10 +422,10 @@ async function openFirstReadableChapter() {
     lastChapter = payload.chapter;
     if (payload.chapter.sentence_count > 0) {
       await loadChapter(chapterId);
-      const first = state.sentences()[0];
+      const first = reader.firstSentenceId();
       if (first) {
-        moveCursor(first.id);
-        reader.jumpTo(first.id, { smooth: false });
+        moveCursor(first);
+        reader.jumpTo(first, { smooth: false });
       }
       return;
     }
@@ -434,6 +459,7 @@ async function loadChapter(chapterId, sentenceId = null) {
     updateUrl(state.book.book_id, chapterId, { replace: true });
     await loadTimeline(chapterId);
     warmAhead(chapterId);
+    updateReadingProgress();
   } catch (error) {
     toast(error.message || '章节加载失败');
   }
@@ -473,6 +499,59 @@ function rememberPosition(cursor) {
   });
 }
 
+function estimatedSentenceSeconds(sentence) {
+  if (!sentence) return 0;
+  let cjk = 0;
+  let latin = 0;
+  for (const [start, end] of splitWords(sentence.text || '')) {
+    const token = sentence.text.slice(start, end);
+    if (/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(token)) {
+      cjk += 1;
+    } else {
+      latin += 1;
+    }
+  }
+  return cjk * 0.24 + latin * 0.33;
+}
+
+function updateReadingProgress() {
+  if (!state.book || !state.chapter) return;
+  const sentenceById = new Map(state.sentences().map((sentence) => [sentence.id, sentence]));
+  const sentences = reader.order
+    .map((sentenceId) => sentenceById.get(sentenceId))
+    .filter(Boolean);
+  const currentId = state.cursor ? state.cursor.sentence_id : null;
+  const measured = new Map(
+    state.timeline.map((entry) => [
+      entry.sentence_id,
+      Math.max(0, entry.end - entry.start),
+    ]),
+  );
+  let elapsed = 0;
+  let total = 0;
+  let foundCurrent = !currentId;
+  for (const sentence of sentences) {
+    const duration = measured.has(sentence.id)
+      ? measured.get(sentence.id)
+      : estimatedSentenceSeconds(sentence);
+    total += duration;
+    if (sentence.id === currentId) {
+      foundCurrent = true;
+      if (player.playing && player.sentenceId === sentence.id) {
+        elapsed += clamp(player.position || 0, 0, duration);
+      }
+      continue;
+    }
+    if (!foundCurrent) elapsed += duration;
+  }
+  const remaining = Math.max(0, total - elapsed);
+  dom.readingChapterTime.textContent =
+    `本章已读 ${Math.floor(elapsed)} 秒 · 剩余 ${Math.ceil(remaining)} 秒`;
+  dom.readingChapterFill.style.width = total > 0
+    ? `${Math.min(100, Math.round((elapsed / total) * 100))}%`
+    : '0%';
+}
+
 const measureProgress = debounce(async () => {
   if (!state.book || !state.cursor) return;
   const { chapter_id: chapterId, sentence_id: sentenceId } = state.cursor;
@@ -484,6 +563,7 @@ const measureProgress = debounce(async () => {
       ...prefs.position,
       percent: payload.percent,
     });
+    updateReadingProgress();
   } catch (error) {
     /* 百分比算不出来不影响阅读 */
   }
@@ -519,6 +599,7 @@ function moveCursor(sentenceId, { scroll = false } = {}) {
   reader.setCurrent(sentenceId, { scroll });
   rememberPosition(cursor);
   measureProgress();
+  updateReadingProgress();
 }
 
 function onSentenceClick(sentenceId) {
@@ -553,7 +634,8 @@ async function onNavigate(node) {
         return;
       }
     }
-    reader.jumpTo(state.sentences()[0].id);
+    const first = reader.firstSentenceId();
+    if (first) reader.jumpTo(first);
     return;
   }
   await loadChapter(chapterId);
@@ -565,10 +647,10 @@ async function onNavigate(node) {
       return;
     }
   }
-  const first = state.sentences()[0];
+  const first = reader.firstSentenceId();
   if (first) {
-    moveCursor(first.id);
-    reader.jumpTo(first.id, { smooth: false });
+    moveCursor(first);
+    reader.jumpTo(first, { smooth: false });
   }
 }
 
@@ -581,10 +663,10 @@ async function gotoChapter(offset) {
   const next = chapters[index + offset];
   if (!next) return false;
   await loadChapter(next);
-  const first = state.sentences()[0];
+  const first = reader.firstSentenceId();
   if (first) {
-    moveCursor(first.id);
-    reader.jumpTo(first.id, { smooth: false });
+    moveCursor(first);
+    reader.jumpTo(first, { smooth: false });
   }
   return true;
 }
@@ -802,16 +884,16 @@ $('#btn-export-progress').addEventListener('click', async () => {
 });
 
 function stepSentence(offset) {
-  const sentences = state.sentences();
+  const sentences = reader.order;
   if (!sentences.length) return;
-  const current = state.cursor ? state.cursor.sentence_id : sentences[0].id;
-  let index = sentences.findIndex((sentence) => sentence.id === current);
+  const current = state.cursor ? state.cursor.sentence_id : sentences[0];
+  let index = sentences.indexOf(current);
   if (index < 0) index = 0;
   const next = sentences[clamp(index + offset, 0, sentences.length - 1)];
   if (!next) return;
-  moveCursor(next.id);
-  reader.jumpTo(next.id);
-  if (player.playing) player.play(next.id);
+  moveCursor(next);
+  reader.jumpTo(next);
+  if (player.playing) player.play(next);
 }
 
 function updatePlayerTime() {
@@ -824,6 +906,7 @@ function updatePlayerTime() {
   dom.playerTime.textContent = `${formatTime(elapsed)} / ${formatTime(total)}`;
   const progress = player.chapterProgress();
   dom.playerProgress.style.width = `${Math.round(progress * 100)}%`;
+  updateReadingProgress();
 }
 
 /* ------------------------------------------------------------------ */
@@ -895,15 +978,14 @@ document.addEventListener('keydown', async (event) => {
   if (key === 'PageUp') { reader.scroll.scrollBy({ top: -reader.scroll.clientHeight * 0.9 }); event.preventDefault(); return; }
   if (key === 'PageDown') { reader.scroll.scrollBy({ top: reader.scroll.clientHeight * 0.9 }); event.preventDefault(); return; }
   if (key === 'Home') {
-    const first = state.sentences()[0];
-    if (first) { moveCursor(first.id); reader.jumpTo(first.id); }
+    const first = reader.firstSentenceId();
+    if (first) { moveCursor(first); reader.jumpTo(first); }
     event.preventDefault();
     return;
   }
   if (key === 'End') {
-    const sentences = state.sentences();
-    const last = sentences[sentences.length - 1];
-    if (last) { moveCursor(last.id); reader.jumpTo(last.id); }
+    const last = reader.order[reader.order.length - 1];
+    if (last) { moveCursor(last); reader.jumpTo(last); }
     event.preventDefault();
     return;
   }

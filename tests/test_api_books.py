@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from factories import build_epub2
+
 
 def upload(client, data: bytes, **fields):
     return client.post(
@@ -145,11 +147,15 @@ def test_token_protects_admin_writes_but_not_reading(tmp_path, epub2_bytes: byte
         assert client.post(
             "/api/v1/books",
             files={"file": ("book.epub", epub2_bytes, "application/epub+zip")},
+            headers={"Origin": "http://testserver"},
         ).status_code == 401
         assert client.post(
             "/api/v1/books",
             files={"file": ("book.epub", epub2_bytes, "application/epub+zip")},
-            headers={"Authorization": "Bearer wrong"},
+            headers={
+                "Authorization": "Bearer wrong",
+                "Origin": "http://testserver",
+            },
         ).status_code == 401
         created = client.post(
             "/api/v1/books",
@@ -269,16 +275,45 @@ def test_library_shell_exposes_search_and_pagination(client):
     assert page.status_code == 200
     assert 'id="library-search-input"' in page.text
     assert 'id="library-pagination"' in page.text
+    assert 'id="reading-chapter-time"' in page.text
+    assert 'id="reading-book-percent"' not in page.text
     assert "navydev.top@gmail.com" in page.text
+    assert 'href="favicon.png"' in page.text
+
+    favicon = client.get("/favicon.png")
+    assert favicon.status_code == 200
+    assert favicon.headers["content-type"] == "image/png"
 
     library_js = client.get("/js/views/library.js")
     assert library_js.status_code == 200
     assert "const PAGE_SIZE = 12;" in library_js.text
     assert "function fuzzyTitleMatch(title, query)" in library_js.text
+    assert "open_count" in library_js.text
+    assert "card-progress-value" in library_js.text
+    assert "英文" not in library_js.text
 
     library_css = client.get("/styles/library.css")
     assert library_css.status_code == 200
     assert "grid-template-columns: repeat(6, minmax(0, 1fr));" in library_css.text
+
+
+def test_book_open_count_is_recorded_and_sorted(client, epub2_bytes: bytes):
+    first_id = upload(client, epub2_bytes).json()["book"]["book_id"]
+    second_id = upload(
+        client,
+        build_epub2(title="另一本书", author="作者乙"),
+    ).json()["book"]["book_id"]
+
+    opened = client.post(f"/api/v1/books/{first_id}/open")
+    assert opened.status_code == 200
+    assert opened.json() == {"book_id": first_id, "open_count": 1}
+    assert client.post(f"/api/v1/books/{first_id}/open").json()["open_count"] == 2
+
+    books = client.get("/api/v1/books").json()
+    assert books[0]["book_id"] == first_id
+    assert books[0]["open_count"] == 2
+    assert {book["book_id"]: book for book in books}[second_id]["open_count"] == 0
+    assert client.post("/api/v1/books/b_deadbeef/open").status_code == 404
 
 
 def test_repository_books_are_imported_and_public(tmp_path, epub2_bytes: bytes):

@@ -224,12 +224,26 @@ class Store:
             SELECT b.*, COALESCE(p.percent, 0) AS progress
             FROM books b
             LEFT JOIN progress p ON p.book_id = b.book_id
-            ORDER BY b.updated_at DESC
+            ORDER BY b.open_count DESC, b.updated_at DESC
             LIMIT ? OFFSET ?
             """,
             (limit, offset),
         )
         return [self._row_to_book(row) for row in rows]
+
+    def record_open(self, book_id: str) -> int | None:
+        """Count one user-initiated book open and return the new total."""
+        with self.db.write() as conn:
+            cursor = conn.execute(
+                "UPDATE books SET open_count = open_count + 1 WHERE book_id = ?",
+                (book_id,),
+            )
+            if cursor.rowcount == 0:
+                return None
+            row = conn.execute(
+                "SELECT open_count FROM books WHERE book_id = ?", (book_id,)
+            ).fetchone()
+        return int(row["open_count"]) if row else None
 
     def count_books(self) -> int:
         row = self.db.query_one("SELECT COUNT(*) AS n FROM books")
@@ -412,6 +426,7 @@ class Store:
             ),
             chapter_count=row["chapter_count"],
             sentence_count=row["sentence_count"],
+            open_count=row["open_count"] if "open_count" in keys else 0,
             tts_state=row["tts_state"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],

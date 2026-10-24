@@ -12,13 +12,6 @@ function localPercent(book) {
   return (prefs && prefs.position && prefs.position.percent) || 0;
 }
 
-function languageGroup(book) {
-  const family = (book.language || '').split('-')[0].toLowerCase();
-  if (family === 'en') return 'en';
-  if (family === 'zh') return 'zh';
-  return 'other';
-}
-
 function lastOpened(book) {
   const value = state.bookPrefs[book.book_id]?.lastOpened;
   return Number.isFinite(value) ? value : 0;
@@ -27,6 +20,8 @@ function lastOpened(book) {
 function compareBooks(left, right) {
   const opened = lastOpened(right) - lastOpened(left);
   if (opened) return opened;
+  const popularity = (right.open_count || 0) - (left.open_count || 0);
+  if (popularity) return popularity;
   return (left.title || '').localeCompare(right.title || '', 'zh-CN');
 }
 
@@ -88,16 +83,7 @@ export class LibraryView {
   render(books) {
     this.books = books;
     this.grid.replaceChildren();
-    const groups = [
-      ['en', '英文'],
-      ['zh', '中文'],
-      ['other', '其他'],
-    ];
-    const ordered = groups.flatMap(([key]) =>
-      books
-        .filter((book) => languageGroup(book) === key)
-        .sort(compareBooks),
-    );
+    const ordered = books.slice().sort(compareBooks);
     const matches = this.query.trim()
       ? ordered.filter((book) => fuzzyTitleMatch(book.title, this.query))
       : ordered;
@@ -111,14 +97,9 @@ export class LibraryView {
       ? '没有找到匹配的图书'
       : '书架暂时没有书';
 
-    for (const [key, label] of groups) {
-      const items = visible.filter((book) => languageGroup(book) === key);
-      if (!items.length) continue;
-      this.grid.append(el('section', { class: 'book-section' }, [
-        el('h2', { class: 'book-section-title', text: label }),
-        el('div', { class: 'grid' }, items.map((book) => this.card(book))),
-      ]));
-    }
+    this.grid.append(
+      el('div', { class: 'grid' }, visible.map((book) => this.card(book))),
+    );
     this.renderPagination(totalPages, matches.length);
   }
 
@@ -161,6 +142,7 @@ export class LibraryView {
     const cover = book.cover_url
       ? el('img', { src: book.cover_url, alt: '', loading: 'lazy' })
       : el('span', { class: 'placeholder', text: (book.title || '?').trim().charAt(0) });
+    const percent = Math.round(localPercent(book) * 100);
 
     return el('button', {
       class: 'card',
@@ -170,12 +152,15 @@ export class LibraryView {
       el('div', { class: 'card-cover' }, [cover]),
       el('span', { class: 'card-title', text: book.title }),
       el('span', { class: 'card-author', text: book.author || '未知作者' }),
-      el('span', { class: 'card-progress' }, [
-        el('span', {
-          class: 'card-progress-fill',
-          // 进度是这一端自己记的，不和服务端也不和终端共享。
-          style: `width:${Math.round(localPercent(book) * 100)}%`,
-        }),
+      el('span', { class: 'card-progress-meta' }, [
+        el('span', { class: 'card-progress' }, [
+          el('span', {
+            class: 'card-progress-fill',
+            // 进度是这一端自己记的，不和服务端也不和终端共享。
+            style: `width:${percent}%`,
+          }),
+        ]),
+        el('span', { class: 'card-progress-value', text: `已读 ${percent}%` }),
       ]),
     ]);
   }

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>有声电子书</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23c8791f'/%3E%3Crect x='9' y='7' width='3' height='18' rx='1.5' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="styles/tokens.css">
 <link rel="stylesheet" href="styles/base.css">
 <link rel="stylesheet" href="styles/library.css">
@@ -66,7 +66,7 @@
       </div>
     </div>
     <div class="library-grid" id="library-grid">
-      <div class="book-sections" id="book-grid"></div>
+      <div id="book-grid"></div>
       <div class="empty" id="library-empty" hidden>
         <p class="empty-title" id="library-empty-title">书架暂时没有书</p>
         <p class="empty-hint">可发送邮箱到 <a href="mailto:navydev.top@gmail.com">navydev.top@gmail.com</a> 进行支持。</p>
@@ -77,6 +77,14 @@
 
   <!-- 阅读 -->
   <section class="reader" id="reader" aria-label="正文" hidden>
+    <div class="reading-progress" id="reading-progress" aria-live="polite">
+      <div class="reading-progress-track" aria-hidden="true">
+        <span id="reading-chapter-fill"></span>
+      </div>
+      <div class="reading-progress-copy">
+        <span id="reading-chapter-time">本章已读 0 秒 · 剩余 0 秒</span>
+      </div>
+    </div>
     <div class="reader-scroll" id="reader-scroll">
       <article class="column" id="column" role="document"></article>
     </div>

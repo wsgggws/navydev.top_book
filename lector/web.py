@@ -35,6 +35,7 @@ from lector.config import (
 from lector.db import Database
 from lector.epub.errors import EpubError
 from lector.library import metadata_from_filename
+from lector.security import install_security
 from lector.store import Store
 from lector.tts.base import TTSEngine
 from lector.tts.cache import AudioCache
@@ -88,6 +89,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         audio=audio,
         limiter=RateLimiter(),
     )
+    install_security(app)
 
     @app.exception_handler(ApiError)
     async def _handle_api_error(request: Request, exc: Exception) -> JSONResponse:

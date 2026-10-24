@@ -80,6 +80,7 @@ class Book(BaseModel):
     cover_url: str | None = None
     chapter_count: int = 0
     sentence_count: int = 0
+    open_count: int = 0
     progress: float = 0.0
     tts_state: TtsState = "pending"
     created_at: str
@@ -89,6 +90,11 @@ class Book(BaseModel):
 class UploadResponse(BaseModel):
     book: Book
     duplicate: bool = False
+
+
+class BookOpenResponse(BaseModel):
+    book_id: str
+    open_count: int
 
 
 class BookDetailResponse(BaseModel):
