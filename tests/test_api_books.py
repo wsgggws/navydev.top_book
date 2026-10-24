@@ -204,9 +204,15 @@ def test_the_app_can_live_under_a_path(tmp_path, epub2_bytes: bytes):
     # 接口在 /book/api/v1
     assert client.get("/book/api/v1/health").status_code == 200
     assert client.get("/book/api/v1/books").status_code == 200
-    # 页面在 /book/，并把基路径告诉前端
+    # 页面在 /book 与 /book/，并把基路径告诉前端
+    page = client.get("/book")
+    assert page.status_code == 200
+    assert '<base href="/book/">' in page.text
+    assert 'window.lectorBase="/book"' in page.text
+
     page = client.get("/book/")
     assert page.status_code == 200
+    assert '<base href="/book/">' in page.text
     assert 'window.lectorBase="/book"' in page.text
     # 封面地址也带前缀（测试书没有封面，有的话必须是带前缀的）
     books = client.get("/book/api/v1/books").json()

@@ -1,10 +1,10 @@
 # 部署上线
 
 `navydev.top_book`（应用名仍是 Lector）线上挂在
-`https://navydev.top/book/`。生产环境使用 Docker Compose，不使用 systemd。
+`https://navydev.top/book`。生产环境使用 Docker Compose，不使用 systemd。
 
 - 本地开发：`uv run lector-server`，默认 `127.0.0.1:8000`
-- 线上生产：容器只监听宿主机 `127.0.0.1:8010`，由中央 nginx 转发 `/book/`
+- 线上生产：容器只监听宿主机 `127.0.0.1:8010`，由中央 nginx 转发 `/book`
 - 持久数据：Docker 命名卷 `navydev-top-book-data`
 
 ## 1. 服务器准备
@@ -14,7 +14,7 @@
 - Docker Engine
 - Docker Compose v2（`docker compose version` 必须可用）
 - SSH 用户可以执行 Docker，不需要 root 登录或 systemd
-- 已由 `nginx-config` 配好 `navydev.top` 证书与 `/book/` 反向代理
+- 已由 `nginx-config` 配好 `navydev.top` 证书与 `/book` 反向代理
 
 服务器**不需要**单独安装 Python、uv，也不需要创建系统用户。
 
@@ -186,10 +186,14 @@ upstream lector_app {
     keepalive 32;
 }
 
-location /book/ {
+location = /book {
     # LECTOR_BASE_PATH=/book，代理时不能剥掉前缀。
     proxy_pass http://lector_app;
     proxy_read_timeout 120s;
+}
+
+location /book/ {
+    proxy_pass http://lector_app;
 }
 ```
 

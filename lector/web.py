@@ -160,7 +160,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     web_dir = Path(settings.web_dir)
     if web_dir.exists():
-        @app.get(f"{base}/", include_in_schema=False)
         async def index() -> HTMLResponse:
             """The application shell.
 
@@ -169,11 +168,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             (for example behind nginx at ``/book``).
             """
             markup = (web_dir / "index.html").read_text("utf-8")
-            script = (
-                f'<script>window.lectorBase={json.dumps(base)}</script>'
+            page_base = f"{base}/" if base else "/"
+            head = (
+                f'<base href="{page_base}">\n'
+                f"<script>window.lectorBase={json.dumps(base)}</script>"
             )
-            markup = markup.replace("<head>", f"<head>\n{script}", 1)
+            markup = markup.replace("<head>", f"<head>\n{head}", 1)
             return HTMLResponse(markup)
+
+        app.add_api_route(f"{base}/", index, include_in_schema=False)
+        # `/book` and `/book/` must both render the shell directly; a redirect
+        # would make relative asset URLs resolve against `/` instead of `/book/`.
+        if base:
+            app.add_api_route(base, index, include_in_schema=False)
 
         app.mount(base or "/", StaticFiles(directory=str(web_dir), html=True), name="web")
     return app
