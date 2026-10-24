@@ -6,9 +6,11 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
+import re
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -161,6 +163,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     web_dir = Path(settings.web_dir)
     if web_dir.exists():
+        asset_version = _web_asset_version(web_dir)
+
         async def index() -> HTMLResponse:
             """The application shell.
 
@@ -175,7 +179,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 f"<script>window.lectorBase={json.dumps(base)}</script>"
             )
             markup = markup.replace("<head>", f"<head>\n{head}", 1)
-            return HTMLResponse(markup)
+            markup = _version_assets(markup, asset_version)
+            return HTMLResponse(markup, headers={"Cache-Control": "no-cache"})
 
         app.add_api_route(f"{base}/", index, include_in_schema=False)
         # `/book` and `/book/` must both render the shell directly; a redirect
@@ -204,6 +209,22 @@ def _clean_errors(exc: RequestValidationError) -> list[dict]:
 def _request_id(request: Request) -> str:
     """A cheap request id for error reports."""
     return request.headers.get("x-request-id", "") or f"req-{id(request):x}"
+
+
+def _web_asset_version(web_dir: Path) -> str:
+    """Hash the browser assets so every deploy gets fresh URLs."""
+    digest = hashlib.sha256()
+    for path in sorted(web_dir.rglob("*")):
+        if path.is_file() and path.suffix in {".css", ".js"}:
+            digest.update(path.relative_to(web_dir).as_posix().encode())
+            digest.update(path.read_bytes())
+    return digest.hexdigest()[:12]
+
+
+def _version_assets(markup: str, version: str) -> str:
+    """Append the content version to local CSS and module script URLs."""
+    pattern = r'((?:href|src)=")((?:styles|js)/[^"?]+)(?:\?[^"]*)?(")'
+    return re.sub(pattern, rf"\1\2?v={version}\3", markup)
 
 
 def sync_seed_books(store: Store, directory: Path | None) -> None:
