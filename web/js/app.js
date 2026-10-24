@@ -38,8 +38,6 @@ const dom = {
   rateMenu: $('#rate-menu'),
   btnVoice: $('#btn-voice'),
   btnPlayerClose: $('#btn-player-close'),
-  btnFollow: $('#btn-follow'),
-  followDot: $('#follow-dot'),
 };
 
 const player = new Player();
@@ -245,7 +243,6 @@ const library = new LibraryView(dom.library, {
 const reader = new ReaderView(dom.reader, {
   onCursorMove: (sentenceId, options) => moveCursor(sentenceId, options),
   onSentenceClick: (sentenceId) => onSentenceClick(sentenceId),
-  onScrollEnd: (following) => updateFollowHint(following),
 });
 
 const toc = new TocDrawer(dom.drawerToc, {
@@ -564,7 +561,8 @@ const refreshTimeline = debounce(() => {
 
 player.onSentence = (sentenceId, words, granularity) => {
   reader.setWords(sentenceId, words, granularity);
-  reader.setCurrent(sentenceId, { scroll: reader.follow });
+  // 只高亮，不滚动：文字停在哪由人决定，声音走到哪就高亮哪。
+  reader.setCurrent(sentenceId);
   reader.locked = true;
   if (state.cursor && state.cursor.sentence_id !== sentenceId) {
     state.setCursor({ ...state.cursor, sentence_id: sentenceId }, 'play');
@@ -749,21 +747,6 @@ function updatePlayerTime() {
   const progress = player.chapterProgress();
   dom.playerProgress.style.width = `${Math.round(progress * 100)}%`;
 }
-
-function updateFollowHint(following) {
-  if (!state.book) return;
-  dom.playerStatus.textContent = following ? '' : '跟随已暂停';
-  dom.btnFollow.classList.toggle('is-active', following);
-  dom.followDot.hidden = following;
-}
-
-dom.btnFollow.addEventListener('click', () => {
-  reader.setFollow(!reader.follow);
-  updateFollowHint(reader.follow);
-  if (reader.follow && state.cursor) {
-    reader.jumpTo(state.cursor.sentence_id);
-  }
-});
 
 /* ------------------------------------------------------------------ */
 /* 快捷键                                                              */
@@ -994,5 +977,8 @@ async function start() {
     state.rememberBook('');
   }
 }
+
+// 调试用：控制台里能摸到当前状态与播放器。
+window.lector = { state, player, reader };
 
 start();

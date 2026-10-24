@@ -85,18 +85,6 @@
   vertical-align: middle;
 }
 
-/* 跟随时的小圆点提示 */
-#btn-follow .dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-  margin-left: 3px;
-  vertical-align: middle;
-}
-#btn-follow .dot[hidden] { display: none; }
-
 @media (max-width: 639px) {
   .player { gap: var(--sp-2); padding: 0 var(--sp-2); }
   .player-time, #btn-voice { display: none; }

@@ -26,12 +26,14 @@ export class Player {
     this._pending = null;
 
     this.audio.addEventListener('ended', () => this._advance());
-    this.audio.addEventListener('timeupdate', () => {
-      this._tick();
-      if (this.onTick) this.onTick();
+    this.audio.addEventListener('play', () => {
+      this._setPlaying(true);
+      this._startTicking();
     });
-    this.audio.addEventListener('play', () => this._setPlaying(true));
-    this.audio.addEventListener('pause', () => this._setPlaying(false));
+    this.audio.addEventListener('pause', () => {
+      this._setPlaying(false);
+      this._stopTicking();
+    });
     this.audio.addEventListener('error', () => {
       if (this._pending) {
         this._setPlaying(false);
@@ -120,6 +122,10 @@ export class Player {
       ]);
       this.words = wordsPayload.words || [];
       this.granularity = wordsPayload.granularity || 'sentence';
+      // 先把词边界铺到句子上，再开始播。
+      // 反过来的话，刚开始播的那一瞬间会拿新句的词边界去点亮旧句的词，
+      // 高亮会错位 —— 加速时尤其明显。
+      if (this.onSentence) this.onSentence(sentenceId, this.words, this.granularity);
       this.audio.src = url;
       this.audio.playbackRate = this.rate;
       if (fromWord !== null && this.granularity === 'word') {
@@ -127,7 +133,6 @@ export class Player {
         if (word) this.audio.currentTime = Math.max(0, word.start);
       }
       await this.audio.play();
-      if (this.onSentence) this.onSentence(sentenceId, this.words, this.granularity);
       this.prefetchNext();
     } catch (error) {
       this._setPlaying(false);
@@ -206,7 +211,13 @@ export class Player {
     else go();
   }
 
-  /** Highlight the word that is being spoken right now. */
+  /**
+   * Highlight the word that is being spoken right now.
+   *
+   * Driven by requestAnimationFrame rather than the ``timeupdate`` event:
+   * the event only fires a few times a second, which makes the highlight
+   * visibly steppy and slightly behind the voice.
+   */
   _tick() {
     if (!this.words.length) return;
     const index = wordAt(this.words, this.audio.currentTime);
@@ -217,6 +228,22 @@ export class Player {
       span.classList.toggle('is-now', position === index);
       span.classList.toggle('is-read', position < index);
     });
+  }
+
+  /** 播放时用 rAF 一帧一帧地推进高亮。 */
+  _startTicking() {
+    if (this._frame) return;
+    const step = () => {
+      this._tick();
+      if (this.onTick) this.onTick();
+      this._frame = this.playing ? requestAnimationFrame(step) : null;
+    };
+    this._frame = requestAnimationFrame(step);
+  }
+
+  _stopTicking() {
+    if (this._frame) cancelAnimationFrame(this._frame);
+    this._frame = null;
   }
 
   /** Progress of the current chapter, 0..1. */

@@ -20,8 +20,6 @@ export class ReaderView {
     this.sentenceNodes = new Map();
     this.order = [];
     this.currentElement = null;
-    this.follow = true;
-    this.userScrolled = false;
 
     this.settle = debounce(() => this._syncFromScroll(), 150);
     this.scroll.addEventListener('scroll', () => {
@@ -31,18 +29,7 @@ export class ReaderView {
         return;
       }
       this.settle();
-      this.userScrolled = true;
-      this.follow = false;
-      if (this.onScrollEnd) this.onScrollEnd(false);
     }, { passive: true });
-
-    for (const type of ['wheel', 'touchmove']) {
-      this.scroll.addEventListener(type, () => {
-        this.userScrolled = true;
-        this.follow = false;
-        if (this.onScrollEnd) this.onScrollEnd(false);
-      }, { passive: true });
-    }
   }
 
   /** Render a chapter into the column. */
@@ -81,10 +68,14 @@ export class ReaderView {
     }
   }
 
-  /** 把当前句重新摆回阅读带（图片撑开版式后要重来一次）。 */
+  /**
+   * 图片是后到的，撑开版式会把当前句挤走。
+   * 高亮还在，只是位置变了 —— 这里只重新标一次当前句，不动滚动。
+   */
   reanchor() {
-    if (!this.currentElement || !this.follow) return;
-    this.scrollToNode(this.currentElement, { instant: true });
+    if (!this.currentElement) return;
+    this.currentElement.classList.remove('is-current');
+    this.currentElement.classList.add('is-current');
   }
 
   /** A heading that repeats the chapter title is shown only once. */
@@ -136,9 +127,8 @@ export class ReaderView {
    * Mark a scroll as ours.
    *
    * The flag has to survive the whole animation: a long smooth scroll easily
-   * outlasts a fixed timeout, and letting the flag lapse mid-flight makes the
-   * reader think the user scrolled — which pauses the follow, and then the
-   * text stops tracking the voice.
+   * outlasts a fixed timeout, and letting the flag lapse mid-flight would
+   * make the reading position jump to whatever happened to be on screen.
    */
   _armProgrammatic() {
     if (this._programmaticTimer) clearTimeout(this._programmaticTimer);
@@ -157,11 +147,6 @@ export class ReaderView {
     this.currentElement = node;
     if (!node) return;
     node.classList.add('is-current');
-    if (scroll) {
-      this.scrollToNode(node, { instant: true });
-      this.userScrolled = false;
-      this.follow = true;
-    }
   }
 
   /** Replace the text of a sentence with timed word spans. */
@@ -177,12 +162,17 @@ export class ReaderView {
     }
     let cursor = 0;
     for (const word of words) {
-      const index = source.indexOf(word.text, cursor);
-      if (index < 0) continue;
+      const index = this._findWord(source, word.text, cursor);
+      if (index < 0) {
+        // 引擎给的分词在正文里找不到（标点被吃掉之类）：
+        // 跳过这个词，但游标只前进一格，免得后面的词全错位。
+        cursor += 1;
+        continue;
+      }
       if (index > cursor) {
         node.append(document.createTextNode(source.slice(cursor, index)));
       }
-      const span = el('span', { class: 'w', text: word.text });
+      const span = el('span', { class: 'w', text: source.slice(index, index + word.text.length) });
       span.dataset.start = word.start;
       span.dataset.end = word.end;
       node.append(span);
@@ -191,6 +181,22 @@ export class ReaderView {
     if (cursor < source.length) {
       node.append(document.createTextNode(source.slice(cursor)));
     }
+  }
+
+  /**
+   * Where a word sits in the sentence text.
+   *
+   * The engine reports the words it spoke; the sentence text also carries the
+   * punctuation in between.  Match exactly when we can, fall back to a
+   * case-insensitive match, and never look backwards past the cursor.
+   */
+  _findWord(source, text, cursor) {
+    if (!text) return -1;
+    let index = source.indexOf(text, cursor);
+    if (index >= 0) return index;
+    index = source.toLowerCase().indexOf(text.toLowerCase(), cursor);
+    if (index >= 0) return index;
+    return -1;
   }
 
   /** Put the plain text back — used when playback stops. */
@@ -229,8 +235,6 @@ export class ReaderView {
     const node = this.elementFor(sentenceId);
     if (!node) return;
     this.scrollToNode(node, { smooth });
-    this.userScrolled = false;
-    this.follow = true;
     if (this.onCursorMove) this.onCursorMove(sentenceId, { scroll: false });
   }
 
@@ -266,7 +270,4 @@ export class ReaderView {
     return null;
   }
 
-  setFollow(value) {
-    this.follow = value;
-  }
 }

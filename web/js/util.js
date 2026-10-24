@@ -92,13 +92,22 @@ export function splitWords(text) {
   return spans;
 }
 
-/** The index of the word that contains `time`, or -1. */
+/**
+ * The index of the word being spoken at `time`.
+ *
+ * Words are separated by short silences.  Inside such a gap the previous
+ * word is still the one being read, so it keeps the highlight instead of
+ * going dark for a moment.
+ */
 export function wordAt(words, time) {
+  if (!words.length) return -1;
+  let candidate = -1;
   for (let i = 0; i < words.length; i += 1) {
-    if (time >= words[i].start && time < words[i].end) return i;
+    if (time < words[i].start) break;
+    candidate = i;
+    if (time < words[i].end) return i;
   }
-  if (words.length && time >= words[words.length - 1].end) return words.length - 1;
-  return -1;
+  return candidate;
 }
 
 export function clamp(value, min, max) {

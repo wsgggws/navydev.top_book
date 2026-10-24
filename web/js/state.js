@@ -19,7 +19,6 @@ const DEFAULT_SETTINGS = {
   voiceId: '',
   voiceTouched: false,
   voiceGender: 'female',
-  follow: true,
 };
 
 function loadSettings() {
