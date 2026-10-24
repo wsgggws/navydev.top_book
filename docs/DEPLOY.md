@@ -29,6 +29,8 @@
 | `SSH_PRIVATE_KEY` | 该用户对应私钥文件的**完整内容** |
 | `LECTOR_TOKEN` | 服务端访问令牌，建议 `<随机值>:admin` |
 
+`LECTOR_TOKEN` 只保护管理写操作；书籍、章节、搜索、封面和音频等阅读接口公开。
+
 `SSH_PRIVATE_KEY` 不是 `.pub` 公钥。要复制私钥文件的完整内容，包括：
 
 ```text
@@ -81,7 +83,7 @@ chmod 600 ~/.ssh/navydev_top_book_deploy
 发布流程：
 
 1. 在 GitHub runner 重跑服务端与终端测试；
-2. 打包源码、`Dockerfile`、`docker-compose.yml` 和 `Makefile`；
+2. 打包源码、`books/*.epub`、`Dockerfile`、`docker-compose.yml` 和 `Makefile`；
 3. 通过 SCP 上传到 `~/deploy/navydev.top_book-staging-<sha>/`；
 4. 在服务器解包到 `~/deploy/navydev.top_book/releases/<sha>/`；
 5. 在 GitHub runner 构建 `linux/amd64` 镜像并推送到 GHCR；
@@ -102,6 +104,20 @@ LECTOR_IMAGE=ghcr.nju.edu.cn/wsgggws/navydev.top_book:<git-sha>
 ```
 
 `LECTOR_DATA_DIR=/data`、监听地址和端口由 `docker-compose.yml` 固定。
+
+## 4.1 添加书籍
+
+网页端不提供上传入口。添加书籍只需要把 EPUB 放进仓库：
+
+```bash
+cp ~/Downloads/new-book.epub books/
+git add books/new-book.epub
+git commit -m "book: add new-book"
+git push origin main
+```
+
+新镜像启动时会把 `books/*.epub` 自动导入命名卷；已导入的内容按 SHA-256 去重，
+重复部署不会产生重复书籍。
 
 ## 5. Docker Compose
 
@@ -208,7 +224,6 @@ HTTP/2 使用 nginx 1.18 支持的 `listen 443 ssl http2;`。音频与上传接�
 cd terminal
 uv sync
 LECTOR_URL=https://navydev.top/book \
-LECTOR_TOKEN=你的令牌 \
 uv run lector
 ```
 
@@ -217,7 +232,7 @@ uv run lector
 
 ## 10. 注意事项
 
-- `LECTOR_TOKEN` 必须配置；否则反向代理会公开一个无鉴权实例。
+- 阅读接口公开；仍建议配置 `LECTOR_TOKEN`，避免管理写接口被匿名调用。
 - 上传上限 50MB，nginx 的 `client_max_body_size` 要留出余量。
 - 音频 URL 的内容由文本、音色、倍速与引擎版本共同决定，可长期缓存。
 - 换音色后不必手工删旧文件；缓存键变了，旧缓存只是不再命中。

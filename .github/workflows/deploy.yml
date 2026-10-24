@@ -82,6 +82,7 @@ jobs:
             pyproject.toml \
             uv.lock \
             README.md \
+            books \
             lector \
             web
 

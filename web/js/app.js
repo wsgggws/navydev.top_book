@@ -245,7 +245,6 @@ function cycleTheme() {
 
 const library = new LibraryView(dom.library, {
   onOpen: (book) => openBook(book.book_id),
-  onToast: toast,
 });
 
 const reader = new ReaderView(dom.reader, {

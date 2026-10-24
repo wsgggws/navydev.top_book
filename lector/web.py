@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from lector.api import ROUTERS
-from lector.api.deps import AppContext, RateLimiter, parse_token, require_auth
+from lector.api.deps import AppContext, RateLimiter, parse_token, public_read
 from lector.api.errors import ApiError
 from lector.config import (
     APP_VERSION,
@@ -30,6 +30,7 @@ from lector.config import (
     load_settings,
 )
 from lector.db import Database
+from lector.epub.errors import EpubError
 from lector.store import Store
 from lector.tts.base import TTSEngine
 from lector.tts.cache import AudioCache
@@ -148,7 +149,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get(f"{base}/api/v1/meta", include_in_schema=False)
     async def meta(request: Request) -> dict:
         """Build information for the browser application."""
-        await require_auth(request)
+        await public_read(request)
         return {
             "version": APP_VERSION,
             "parser_version": PARSER_VERSION,
@@ -205,11 +206,30 @@ def _request_id(request: Request) -> str:
     return request.headers.get("x-request-id", "") or f"req-{id(request):x}"
 
 
+def sync_seed_books(store: Store, directory: Path | None) -> None:
+    """Import EPUBs shipped in the repository into the writable library.
+
+    Content hashes make this idempotent. A malformed file is reported and
+    skipped so one bad addition cannot stop the server from starting.
+    """
+    if directory is None or not directory.is_dir():
+        return
+    for path in sorted(directory.glob("*.epub")):
+        try:
+            result = store.ingest(path.read_bytes())
+        except (OSError, EpubError) as exc:
+            logger.error("仓库书籍导入失败 %s: %s", path.name, exc)
+            continue
+        if not result.duplicate:
+            logger.info("已导入仓库书籍《%s》", result.book.title)
+
+
 def main() -> None:
     """Entry point of the server (``uv run lector-server``)."""
     import uvicorn
 
     settings = load_settings()
+    sync_seed_books(app.state.ctx.store, settings.seed_books_dir)
     if not settings.token and settings.host not in ("127.0.0.1", "localhost", "::1"):
         logger.warning(
             "LECTOR_TOKEN 未设置，服务将向 %s 开放且任何人都能读写全部书籍。"

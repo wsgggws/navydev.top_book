@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query, Request
 
-from lector.api.deps import get_context, require_auth
+from lector.api.deps import get_context, public_read
 from lector.api.errors import ApiError, bad_request
 from lector.models import SearchResponse, SearchResult
 
@@ -23,7 +23,7 @@ async def search(
     request: Request,
     q: str = Query("", min_length=0),
     limit: int = Query(50, ge=1, le=200),
-    _: None = Depends(require_auth),
+    _: None = Depends(public_read),
 ) -> SearchResponse:
     """Find sentences that contain the query."""
     ctx = get_context(request)

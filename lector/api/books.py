@@ -14,8 +14,8 @@ from lector.api.deps import (
     AppContext,
     client_address,
     get_context,
+    public_read,
     require_admin,
-    require_auth,
 )
 from lector.api.errors import ApiError, epub_invalid
 from lector.epub.errors import EpubError, EpubNotAZipError
@@ -99,7 +99,7 @@ async def list_books(
     request: Request,
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    _: None = Depends(require_auth),
+    _: None = Depends(public_read),
 ) -> list[Book]:
     """The library, newest first."""
     ctx = get_context(request)
@@ -110,7 +110,7 @@ async def list_books(
 async def get_book(
     book_id: str,
     request: Request,
-    _: None = Depends(require_auth),
+    _: None = Depends(public_read),
 ) -> BookDetailResponse:
     """One book together with its reading progress."""
     ctx = get_context(request)
@@ -140,7 +140,7 @@ async def delete_book(
 async def get_cover(
     book_id: str,
     request: Request,
-    _: None = Depends(require_auth),
+    _: None = Depends(public_read),
 ) -> Response:
     """The cover image, if the book has one."""
     ctx = get_context(request)
@@ -168,7 +168,7 @@ async def get_media(
     book_id: str,
     path: str,
     request: Request,
-    _: None = Depends(require_auth),
+    _: None = Depends(public_read),
 ) -> Response:
     """An image from inside the EPUB.
 

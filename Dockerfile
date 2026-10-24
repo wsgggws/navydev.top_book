@@ -32,6 +32,7 @@ WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
 COPY lector ./lector
 COPY web ./web
+COPY books ./books
 
 RUN mkdir -p /data
 

@@ -51,15 +51,6 @@ export const api = {
 
   listBooks: () => request('/books'),
   getBook: (bookId) => request(`/books/${bookId}`),
-  deleteBook: (bookId) => request(`/books/${bookId}`, { method: 'DELETE' }),
-  uploadBook: (file, fields = {}) => {
-    const form = new FormData();
-    form.append('file', file, file.name || 'book.epub');
-    for (const [key, value] of Object.entries(fields)) {
-      if (value) form.append(key, value);
-    }
-    return request('/books', { method: 'POST', body: form });
-  },
 
   getToc: (bookId) => request(`/books/${bookId}/toc`),
   getChapter: (bookId, chapterId) => request(`/books/${bookId}/chapters/${chapterId}`),

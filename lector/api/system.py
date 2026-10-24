@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
 
-from lector.api.deps import get_context, require_auth
+from lector.api.deps import get_context, public_read
 from lector.api.errors import ApiError
 from lector.models import HealthResponse, TtsHealth, VoicesResponse
 from lector.tts.base import TTSError
@@ -34,7 +34,7 @@ async def health(request: Request) -> HealthResponse:
 
 
 @router.get("/tts/voices", response_model=VoicesResponse)
-async def voices(request: Request, _: None = Depends(require_auth)) -> VoicesResponse:
+async def voices(request: Request, _: None = Depends(public_read)) -> VoicesResponse:
     """The voices the engine offers."""
     ctx = get_context(request)
     try:

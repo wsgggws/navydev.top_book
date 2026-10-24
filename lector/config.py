@@ -73,6 +73,7 @@ class Settings:
     default_voice: str
     max_upload_bytes: int
     base_path: str
+    seed_books_dir: Path | None
 
     @property
     def web_dir(self) -> Path:
@@ -101,6 +102,15 @@ def load_settings(data_dir: Path | str | None = None) -> Settings:
     base_path = os.environ.get("LECTOR_BASE_PATH", "").strip().rstrip("/")
     if base_path and not base_path.startswith("/"):
         base_path = "/" + base_path
+    configured_books_dir = os.environ.get("LECTOR_BOOKS_DIR", "").strip()
+    if configured_books_dir:
+        seed_books_dir = Path(configured_books_dir).resolve()
+    elif data_dir is None:
+        # `lector-server` uses this for the repository-managed library. Tests
+        # pass an explicit data_dir and therefore never import real books.
+        seed_books_dir = REPO_ROOT / "books"
+    else:
+        seed_books_dir = None
     return Settings(
         data_dir=root,
         db_path=root / "lector.db",
@@ -114,6 +124,7 @@ def load_settings(data_dir: Path | str | None = None) -> Settings:
         default_voice=os.environ.get("LECTOR_VOICE", DEFAULT_VOICE).strip() or DEFAULT_VOICE,
         max_upload_bytes=_env_int("LECTOR_MAX_UPLOAD", MAX_UPLOAD_BYTES),
         base_path=base_path,
+        seed_books_dir=seed_books_dir,
     )
 
 

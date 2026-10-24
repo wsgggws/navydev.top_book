@@ -127,8 +127,8 @@ def test_reads_are_rate_limited(client):
     assert response.json()["error"]["code"] == "RATE_LIMITED"
 
 
-def test_token_is_required_when_configured(tmp_path, epub2_bytes: bytes):
-    """With a token configured every endpoint but health asks for it."""
+def test_token_protects_admin_writes_but_not_reading(tmp_path, epub2_bytes: bytes):
+    """Public browsing stays open; uploads still require the admin token."""
     import os
 
     from fastapi.testclient import TestClient
@@ -141,10 +141,22 @@ def test_token_is_required_when_configured(tmp_path, epub2_bytes: bytes):
         settings = load_settings(tmp_path / "data")
         client = TestClient(create_app(settings))
         assert client.get("/api/v1/health").status_code == 200
-        assert client.get("/api/v1/books").status_code == 401
-        assert client.get("/api/v1/books", headers={"Authorization": "Bearer wrong"}).status_code == 401
-        ok = client.get("/api/v1/books", headers={"Authorization": "Bearer s3cret"})
-        assert ok.status_code == 200
+        assert client.get("/api/v1/books").status_code == 200
+        assert client.post(
+            "/api/v1/books",
+            files={"file": ("book.epub", epub2_bytes, "application/epub+zip")},
+        ).status_code == 401
+        assert client.post(
+            "/api/v1/books",
+            files={"file": ("book.epub", epub2_bytes, "application/epub+zip")},
+            headers={"Authorization": "Bearer wrong"},
+        ).status_code == 401
+        created = client.post(
+            "/api/v1/books",
+            files={"file": ("book.epub", epub2_bytes, "application/epub+zip")},
+            headers={"Authorization": "Bearer s3cret"},
+        )
+        assert created.status_code == 201
     finally:
         os.environ.pop("LECTOR_TOKEN", None)
 
@@ -232,3 +244,28 @@ def test_the_app_can_live_under_a_path(tmp_path, epub2_bytes: bytes):
         },
     ).json()
     assert created["url"].startswith("/book/s/")
+
+
+def test_repository_books_are_imported_and_public(tmp_path, epub2_bytes: bytes):
+    """Books committed under books/ appear without upload or a token."""
+    from fastapi.testclient import TestClient
+
+    from lector.config import load_settings
+    from lector.web import create_app, sync_seed_books
+
+    library = tmp_path / "library"
+    library.mkdir()
+    (library / "seed.epub").write_bytes(epub2_bytes)
+
+    settings = load_settings(tmp_path / "data")
+    settings = settings.__class__(
+        **{**settings.__dict__, "seed_books_dir": library}
+    )
+    app = create_app(settings)
+    sync_seed_books(app.state.ctx.store, settings.seed_books_dir)
+    client = TestClient(app)
+
+    books = client.get("/api/v1/books")
+    assert books.status_code == 200
+    assert len(books.json()) == 1
+    assert "btn-import" not in client.get("/").text

@@ -18,18 +18,10 @@
   letter-spacing: .04em;
 }
 
-.dropzone {
+.library-grid {
   max-width: 1100px;
   margin-inline: auto;
   border-radius: var(--radius-lg);
-  transition: background-color 160ms ease, outline-color 160ms ease;
-  outline: 2px dashed transparent;
-  outline-offset: var(--sp-4);
-}
-
-.dropzone.is-dragging {
-  background: var(--accent-soft);
-  outline-color: var(--accent);
 }
 
 .grid {
@@ -111,34 +103,12 @@
   background: var(--accent);
 }
 
-.card-delete {
-  position: absolute;
-  top: var(--sp-2);
-  right: var(--sp-2);
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text-dim);
-  font-size: 15px;
-  line-height: 1;
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 140ms ease, color 140ms ease;
-}
-.card:hover .card-delete,
-.card-delete:focus-visible { opacity: 1; }
-.card-delete:hover { color: var(--accent); }
-
 .empty {
   text-align: center;
   padding: var(--sp-8) var(--sp-4);
   color: var(--text-dim);
 }
 .empty-title { font-size: 15px; margin: 0 0 var(--sp-2); color: var(--text); }
-.empty-hint { font-size: 12px; margin: 0; }
-
 .is-loading { color: var(--text-faint); font-size: 12px; text-align: center; padding: var(--sp-8); }
 
 @media (max-width: 639px) {

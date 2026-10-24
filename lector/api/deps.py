@@ -118,6 +118,12 @@ async def require_auth(request: Request) -> None:
     ctx.limiter.check("read", client_address(request), READ_LIMIT)
 
 
+async def public_read(request: Request) -> None:
+    """Rate-limit a public read without requiring an access token."""
+    ctx = get_context(request)
+    ctx.limiter.check("read", client_address(request), READ_LIMIT)
+
+
 async def require_reader(request: Request) -> None:
     """A reader may read and record its own position, but not change the library."""
     credentials = _credentials(request)

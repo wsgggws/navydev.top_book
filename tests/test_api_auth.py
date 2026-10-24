@@ -28,12 +28,22 @@ def test_health_needs_no_token(client_for):
     assert client.get("/api/v1/health").status_code == 200
 
 
-def test_reading_needs_the_token(client_for):
+def test_reading_is_public(client_for):
+    """The library and reader API are available without an account."""
     client = client_for("secret")
-    assert client.get("/api/v1/books").status_code == 401
-    assert client.get("/api/v1/books", headers={"Authorization": "Bearer wrong"}).status_code == 401
-    ok = client.get("/api/v1/books", headers={"Authorization": "Bearer secret"})
-    assert ok.status_code == 200
+    assert client.get("/api/v1/books").status_code == 200
+    assert client.get(
+        "/api/v1/books", headers={"Authorization": "Bearer wrong"}
+    ).status_code == 200
+
+
+def test_upload_still_needs_the_admin_token(client_for, epub2_bytes: bytes):
+    client = client_for("secret")
+    response = client.post(
+        "/api/v1/books",
+        files={"file": ("book.epub", epub2_bytes, "application/epub+zip")},
+    )
+    assert response.status_code == 401
 
 
 def test_a_reader_token_may_not_upload(client_for, epub2_bytes: bytes):
@@ -92,6 +102,7 @@ def test_a_reader_token_may_record_its_progress(client_for, epub2_bytes: bytes):
 
 def test_meta_tells_the_client_its_scope(client_for):
     client = client_for("secret:reader")
+    assert client.get("/api/v1/meta").status_code == 200
     payload = client.get(
         "/api/v1/meta", headers={"Authorization": "Bearer secret"}
     ).json()

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
 
-from lector.api.deps import AppContext, get_context, require_auth
+from lector.api.deps import AppContext, get_context, public_read
 from lector.api.errors import ApiError
 from lector.audio import INTER_SENTENCE_GAP
 from lector.models import ChapterResponse, TimelineEntry, TimelineResponse, TocResponse
@@ -24,7 +24,7 @@ def require_book(ctx: AppContext, book_id: str):
 async def get_toc(
     book_id: str,
     request: Request,
-    _: None = Depends(require_auth),
+    _: None = Depends(public_read),
 ) -> TocResponse:
     """The navigation tree.
 
@@ -41,7 +41,7 @@ async def get_chapter(
     book_id: str,
     chapter_id: str,
     request: Request,
-    _: None = Depends(require_auth),
+    _: None = Depends(public_read),
 ) -> ChapterResponse:
     """One chapter with its blocks and sentences."""
     ctx = get_context(request)
@@ -67,7 +67,7 @@ async def get_timeline(
     book_id: str,
     chapter_id: str,
     request: Request,
-    _: None = Depends(require_auth),
+    _: None = Depends(public_read),
 ) -> TimelineResponse:
     """The audio timeline of a chapter.
 

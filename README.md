@@ -56,10 +56,11 @@ make terminal                # 起终端端
 make book books/my.epub      # 造一本书，并送进服务端
 ```
 
-打开 http://localhost:8000，把 `books/` 里的 EPUB 拖进去。
+打开 http://localhost:8000。`books/` 下的 EPUB 会在服务启动时自动导入，
+网页端不提供上传或删除入口。
 
 终端端复用同一套内容 API，默认连 `http://127.0.0.1:8000`；
-用 `LECTOR_URL` 与 `LECTOR_TOKEN` 改地址与令牌，或在书架屏按 `c` 填写。
+用 `LECTOR_URL` 改地址；阅读接口不需要令牌，也可在书架屏按 `c` 填写地址。
 
 键位尽量照 vim 来：`hjkl` 移动、`Ctrl+d/u` 半页、`Ctrl+f/b` 整页、`/` 搜索、
 `n`/`N` 跳结果、`Ctrl+w` 切窗格。正文默认只占中间一页（最多 26 行）并垂直居中，
@@ -73,7 +74,8 @@ make book books/my.epub      # 造一本书，并送进服务端
 | 变量 | 默认 | 说明 |
 | --- | --- | --- |
 | `LECTOR_DATA_DIR` | `./data` | 数据库、EPUB 副本与音频缓存的落盘位置 |
-| `LECTOR_TOKEN` | 空 | 非空时所有 `/api/v1/*`（`/health` 除外）要求 Bearer 令牌 |
+| `LECTOR_TOKEN` | 空 | 仅保护上传、删除、音频预热/清理等管理写操作 |
+| `LECTOR_BOOKS_DIR` | `./books` | 启动时自动导入此目录的 `*.epub` |
 | `LECTOR_HOST` | `127.0.0.1` | 监听地址；配置了令牌时默认 `0.0.0.0` |
 | `LECTOR_PORT` | `8000` | 端口 |
 | `LECTOR_TTS_ENGINE` | `edge` | `edge` / `espeak` / `auto` |
@@ -83,8 +85,8 @@ make book books/my.epub      # 造一本书，并送进服务端
 
 ## 线上部署与终端接入
 
-服务要放到公网上，**必须设置 `LECTOR_TOKEN`** —— 未设置令牌时服务端只监听
-`127.0.0.1`，但反向代理仍会把无鉴权接口暴露出去；令牌同时也是终端端的接入凭证。
+阅读接口对公网公开，不需要令牌。`LECTOR_TOKEN` 只用于管理写操作，防止任何人
+上传、删除书籍或清理音频缓存。
 
 ```bash
 # 服务端
@@ -94,20 +96,29 @@ uv run lector-server
 ```
 
 前面放一层 Caddy / nginx 负责 TLS，服务只监听回环地址即可。终端端用同一个
-令牌接入：
+终端只读，不需要令牌：
 
 ```bash
 # 一次性：环境变量
-LECTOR_URL=https://navydev.top/book LECTOR_TOKEN=xxx uv run lector
+LECTOR_URL=https://navydev.top/book uv run lector
 
 # 或者启动后按 c 交互式填写地址与令牌，记在 ~/.config/lector/reader.json
 uv run lector
 ```
 
-## 在项目里造一本书
+## 添加书籍
 
-`make book books/my.epub` 把 Markdown 变成 EPUB，并送进正在跑的服务端 ——
-网页端立刻能看能听，不用手动上传。
+网页端不提供上传或删除入口。项目的书籍来源就是仓库里的 `books/` 目录：
+
+```bash
+cp ~/Downloads/new-book.epub books/
+git add books/new-book.epub
+git commit -m "book: add new-book"
+git push origin main
+```
+
+服务启动时会自动导入 `books/*.epub`，内容哈希保证重复启动不会重复添加。
+本地也可以用 `make book books/my.epub` 从 Markdown 生成 EPUB。
 
 源可以是单个 Markdown 文件，也可以是一个目录（每个 `.md` 一章）：
 
@@ -127,7 +138,7 @@ Markdown 子集很小（标题、段落、列表、引用、代码块、图片�
 是同一条命令：
 
 ```bash
-make book "books/某本书 (作者).epub"      # 收进书架
+make book "books/某本书 (作者).epub"      # 从 Markdown 生成书
 make book BOOK="books/某本书 (作者).epub"  # 路径带空格时用这种写法
 ```
 
@@ -157,14 +168,14 @@ cp deploy/env.example .env
 make docker-run
 ```
 
-**令牌是必须的**：不设 `LECTOR_TOKEN` 时服务端只监听回环地址。令牌还能分级：
+阅读永远公开；管理令牌只影响写操作：
 
 | 令牌 | 权限 |
 | --- | --- |
-| `<token>` / `<token>:admin` | 全部：读、上传、删除、预热音频、写进度 |
-| `<token>:reader` | 读 + 写自己的阅读进度；**不能**上传/删除书 |
+| `<token>` / `<token>:admin` | 上传、删除、预热音频、清缓存等管理操作 |
+| `<token>:reader` | 不能执行管理写操作 |
 
-终端端只读，给它 `reader` 就够。
+终端端只读，不需要配置令牌。
 
 ## 两端各自记录
 

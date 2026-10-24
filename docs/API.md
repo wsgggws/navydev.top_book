@@ -13,7 +13,7 @@
 | 时间 | ISO-8601 UTC，字符串形式 `2026-10-24T08:00:00Z` |
 | 时长 | 数值，**秒**（float）。`duration_ms` 除外，仅在需要毫秒精度时使用 |
 | ID | 字符串。`book_id` 形如 `b_9f3a2c1d`；章节 `c{index}`；块 `c12.b3`；句 `c12.b3.s0` |
-| 鉴权 | 可选。当环境变量 `LECTOR_TOKEN` 非空时，所有 `/api/v1/*`（`/health` 除外）要求 `Authorization: Bearer <token>`。未配置时服务应仅监听回环地址 |
+| 鉴权 | 阅读接口公开。上传、删除、预热/清理音频等管理写操作在配置 `LECTOR_TOKEN` 后要求 `Authorization: Bearer <token>` |
 | 分页 | 列表接口用 `?limit=&offset=`，`limit` 默认 50、上限 200 |
 | 排序 | 列表默认按 `updated_at DESC`；不接受客户端自定义排序参数 |
 
@@ -44,7 +44,7 @@
 | HTTP | `code` | 含义 | 客户端应对 |
 | --- | --- | --- | --- |
 | 400 | `BAD_REQUEST` | 请求体无法解析或参数非法 | 展示 `message`，不重试 |
-| 401 | `UNAUTHORIZED` | 缺少或错误的 Bearer token | 提示输入 token |
+| 401 | `UNAUTHORIZED` | 管理写操作缺少或错误的 Bearer token | 只在管理操作时提示 token |
 | 403 | `FORBIDDEN` | 令牌有效但权限不够（如 reader 令牌想上传） | 换个权限更高的令牌 |
 | 404 | `NOT_FOUND` | 资源不存在 | 返回书架 |
 | 409 | `ALREADY_EXISTS` | 冲突（如书名重复上传且策略为拒绝） | 提示并引导到既有条目 |
@@ -59,8 +59,8 @@
 
 ### 0.4 线上部署与终端接入
 
-服务要放到公网上，**必须设置 `LECTOR_TOKEN`**：未设置令牌时服务端只监听
-`127.0.0.1`，不配置 `LECTOR_HOST` 就不会对外暴露。令牌同时是终端端的接入凭证。
+书籍、章节、搜索、封面、音频等阅读接口**不需要令牌**，任何人都可以访问。
+`LECTOR_TOKEN` 只用于管理写操作；生产环境仍建议配置，防止上传、删除或清缓存。
 
 ```bash
 # 服务端
@@ -76,18 +76,17 @@ uv run lector-server
 终端 ──https──▶ 反向代理 ──http──▶ lector.web:app (127.0.0.1:8000)
 ```
 
-终端端用同一个令牌接入，两种方式：
+终端端只读书，不需要令牌：
 
 ```bash
 # 一次性：环境变量
-LECTOR_URL=https://reader.example.com LECTOR_TOKEN=xxx uv run lector
+LECTOR_URL=https://navydev.top/book uv run lector
 
 # 或者在书架屏按 c 交互式填写，之后记在 ~/.config/lector/reader.json
 uv run lector
 ```
 
-终端对每个 `/api/v1/*` 请求都带上 `Authorization: Bearer <token>`；
-`GET /api/v1/health` 不需要令牌，可用��探测服务是否活着。
+`GET /api/v1/health` 不需要令牌，可用来探测服务是否活着。
 
 ### 0.6 限流
 
@@ -198,7 +197,7 @@ uv run lector
 
 ### `GET /api/v1/meta`
 
-构建信息与默认音色，给客户端做初始化用（不在 §0 的鉴权豁免之列，但同样不需要令牌以外的权限）。
+构建信息与默认音色，给客户端做初始化用。公开接口，不需要令牌。
 
 ```json
 {
@@ -235,7 +234,8 @@ uv run lector
 
 ### `POST /api/v1/books`
 
-上传 EPUB。`multipart/form-data`，字段：
+上传 EPUB，仅用于管理。`multipart/form-data`，需要 admin 令牌。普通书架内容通过
+仓库的 `books/*.epub` 在服务启动时自动导入，网页不提供上传入口。字段：
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
@@ -268,7 +268,7 @@ uv run lector
 
 ### `DELETE /api/v1/books/{book_id}`
 
-删除书籍、其解析产物与音频缓存。返回 `204`。不存在时 `404`。
+删除书籍、其解析产物与音频缓存。需要 admin 令牌。返回 `204`。不存在时 `404`。
 
 ### `GET /api/v1/books/{book_id}/cover`
 
@@ -544,11 +544,9 @@ GET /api/v1/books/{book_id}/percent?chapter_id=c12&sentence_id=c12.b3.s0
 | 拉时间线 | `GET /api/v1/books/{id}/chapters/{cid}/timeline` |
 | 拉音频 | `GET /api/v1/books/{id}/audio/{sid}.mp3` |
 | 拉词边界 | `GET /api/v1/books/{id}/audio/{sid}.words` |
-| 推进度 | `PUT /api/v1/books/{id}/progress` |
-| 取进度 | `GET /api/v1/books/{id}/progress` |
-| 上传 | `POST /api/v1/books` |
 
-终端端**不做**流式播放：它下载整句 MP3 到临时文件再交给系统播放器（`afplay`/`ffplay`/`aplay`），换取逐词高亮的精确控制。
+终端端不写服务端书库，也不需要令牌。它**不做**流式播放：下载整句 MP3 到临时文件
+再交给系统播放器（`afplay`/`ffplay`/`aplay`），换取逐词高亮的精确控制。
 
 ---
 

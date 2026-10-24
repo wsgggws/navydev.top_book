@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 
-from lector.api.deps import AppContext, get_context, require_admin, require_auth
+from lector.api.deps import AppContext, get_context, public_read, require_admin
 from lector.api.errors import ApiError
 from lector.models import WarmRequest, WarmResponse, WordsResponse
 from lector.tts.base import TTSError, TTSTimeout, TTSUnavailable
@@ -42,7 +42,7 @@ async def get_audio(
     request: Request,
     voice_id: str | None = Query(None, description="用哪个音色合成；缺省按书的语言定"),
     rate: str | None = Query(None, description="合成语速，如 +10%"),
-    _: None = Depends(require_auth),
+    _: None = Depends(public_read),
 ) -> Response:
     """The MP3 of one sentence.  The first request synthesises it."""
     ctx = get_context(request)
@@ -78,7 +78,7 @@ async def get_words(
     request: Request,
     voice_id: str | None = Query(None, description="用哪个音色合成；缺省按书的语言定"),
     rate: str | None = Query(None, description="合成语速，如 +10%"),
-    _: None = Depends(require_auth),
+    _: None = Depends(public_read),
 ) -> WordsResponse:
     """The word boundaries of one sentence — the data behind the highlight."""
     ctx = get_context(request)

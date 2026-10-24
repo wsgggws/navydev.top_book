@@ -140,9 +140,9 @@ books/my/
 - **上传安全**：拒绝 `..` 路径穿越条目、拒绝符号链接、限制解压膨胀比。上传上限 50MB。
 - **音频缓存**：缓存键 = `sha256(text | voice | rate | engine_version)`。同键必须复用，不重复合成。
 - **无第三方案例**：EPUB 解析走标准库 `zipfile` + `ElementTree` + `html.parser`，不引入第三方解析器。
-- **权限分级**：令牌可带权限后缀 `<token>:admin`（默认）或 `<token>:reader`。
-  reader 只能读与写自己的阅读进度，不能上传/删除书、不能动音频缓存。终端端只读，
-  用 reader 即可。
+- **权限分级**：阅读接口公开，不需要令牌。`POST/DELETE` 书籍、音频预热与清缓存等
+  管理写操作要求 admin 令牌。令牌仍可带 `<token>:admin`（默认）或 `<token>:reader`
+  后缀；终端端只读，不需要令牌。
 - **依赖白名单**：`fastapi` `uvicorn` `pydantic` `edge-tts` `textual` `pytest` `httpx` `python-multipart`。新增依赖需要能回答"标准库为什么做不到"，并在提交说明里写清。
   - `python-multipart`：`docs/API.md` §3 规定上传端点是 `multipart/form-data`，FastAPI 解析 multipart 表单强制依赖它；标准库的 `email`/`cgi` 无法被 FastAPI 直接使用（`cgi` 已在 Python 3.13 移除）。
 - **进度写入**：网页防抖 600ms 后写 `localStorage`；终端写自己的

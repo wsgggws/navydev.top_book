@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
 
-from lector.api.deps import AppContext, get_context, require_auth, require_reader
+from lector.api.deps import AppContext, get_context, public_read, require_auth, require_reader
 from lector.api.errors import ApiError, validation_error
 from lector.models import Progress, ProgressCursor, ProgressUpdate
 from lector.store import utcnow
@@ -49,7 +49,7 @@ async def get_percent(
     chapter_id: str,
     sentence_id: str,
     request: Request,
-    _: None = Depends(require_auth),
+    _: None = Depends(public_read),
 ) -> dict:
     """全书百分比 —— 纯粹的换算，服务端不记任何东西。
 

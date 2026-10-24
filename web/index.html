@@ -44,14 +44,11 @@
   <section class="library" id="library" aria-label="书架">
     <div class="library-head">
       <h1>书架</h1>
-      <button class="btn btn-primary" id="btn-import">导入 EPUB</button>
-      <input type="file" id="file-input" accept=".epub,application/epub+zip" hidden>
     </div>
-    <div class="dropzone" id="dropzone">
+    <div class="library-grid" id="library-grid">
       <div class="grid" id="book-grid"></div>
       <div class="empty" id="library-empty" hidden>
-        <p class="empty-title">书架还是空的</p>
-        <p class="empty-hint">把一本 EPUB 拖进来，或点上面的「导入 EPUB」。只支持 EPUB。</p>
+        <p class="empty-title">书架暂时没有书</p>
       </div>
     </div>
   </section>
