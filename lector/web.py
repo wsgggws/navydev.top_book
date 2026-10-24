@@ -174,9 +174,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             """
             markup = (web_dir / "index.html").read_text("utf-8")
             page_base = f"{base}/" if base else "/"
+            import_map = _asset_import_map(web_dir, base, asset_version)
             head = (
                 f'<base href="{page_base}">\n'
-                f"<script>window.lectorBase={json.dumps(base)}</script>"
+                f"<script>window.lectorBase={json.dumps(base)}</script>\n"
+                f'<script type="importmap">{import_map}</script>'
             )
             markup = markup.replace("<head>", f"<head>\n{head}", 1)
             markup = _version_assets(markup, asset_version)
@@ -225,6 +227,16 @@ def _version_assets(markup: str, version: str) -> str:
     """Append the content version to local CSS and module script URLs."""
     pattern = r'((?:href|src)=")((?:styles|js)/[^"?]+)(?:\?[^"]*)?(")'
     return re.sub(pattern, rf"\1\2?v={version}\3", markup)
+
+
+def _asset_import_map(web_dir: Path, base: str, version: str) -> str:
+    """Map every ES module URL to its content-versioned form."""
+    modules = {}
+    for path in sorted(web_dir.rglob("*.js")):
+        relative = path.relative_to(web_dir).as_posix()
+        url = f"{base}/{relative}"
+        modules[url] = f"{url}?v={version}"
+    return json.dumps({"imports": modules}, separators=(",", ":"))
 
 
 def sync_seed_books(store: Store, directory: Path | None) -> None:

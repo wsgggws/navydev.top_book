@@ -223,6 +223,8 @@ def test_the_app_can_live_under_a_path(tmp_path, epub2_bytes: bytes):
     assert 'window.lectorBase="/book"' in page.text
     assert "styles/tokens.css?v=" in page.text
     assert "js/app.js?v=" in page.text
+    assert '<script type="importmap">' in page.text
+    assert '"/book/js/views/library.js":"/book/js/views/library.js?v=' in page.text
     assert page.headers["cache-control"] == "no-cache"
 
     page = client.get("/book/")
