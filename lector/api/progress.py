@@ -43,6 +43,30 @@ def read_progress(ctx: AppContext, book_id: str) -> Progress:
     )
 
 
+@router.get("/books/{book_id}/percent")
+async def get_percent(
+    book_id: str,
+    chapter_id: str,
+    sentence_id: str,
+    request: Request,
+    _: None = Depends(require_auth),
+) -> dict:
+    """全书百分比 —— 纯粹的换算，服务端不记任何东西。
+
+    内置客户端各自在本地存位置，只拿这个接口把游标换算成进度条的百分比。
+    """
+    ctx = get_context(request)
+    if ctx.store.get_book(book_id) is None:
+        raise ApiError(404, "NOT_FOUND", "书籍不存在", {"book_id": book_id})
+    actual = ctx.store.sentence_chapter(book_id, sentence_id)
+    if actual is None or actual != chapter_id:
+        raise validation_error(
+            "句子不属于该章节",
+            {"chapter_id": chapter_id, "sentence_id": sentence_id},
+        )
+    return {"percent": ctx.store.percent_for(book_id, chapter_id, sentence_id)}
+
+
 @router.get("/books/{book_id}/progress", response_model=Progress)
 async def get_progress(
     book_id: str,

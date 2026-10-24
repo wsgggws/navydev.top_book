@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,9 @@ from factories import build_epub2, build_epub3, build_malicious_epub
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BOOKS_DIR = REPO_ROOT / "books"
+
+# 终端的集成测试要跑 terminal/ 里的源码，而不是开发环境里装的那份快照。
+sys.path.insert(0, str(REPO_ROOT / "terminal"))
 
 
 class FakeEngine:

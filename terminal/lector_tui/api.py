@@ -108,27 +108,13 @@ class ApiClient:
             handle.write(data)
         return target
 
-    def get_progress(self, book_id: str) -> dict:
-        return self.request(f"/books/{book_id}/progress")
-
-    def set_progress(
-        self,
-        book_id: str,
-        chapter_id: str,
-        sentence_id: str,
-        word_index: int | None = None,
-        device_label: str = "terminal",
-    ) -> dict:
-        return self.request(
-            f"/books/{book_id}/progress",
-            method="PUT",
-            body={
-                "chapter_id": chapter_id,
-                "sentence_id": sentence_id,
-                "word_index": word_index,
-                "device_label": device_label,
-            },
+    def percent(self, book_id: str, chapter_id: str, sentence_id: str) -> float:
+        """把游标换算成全书百分比（服务端不记任何东西）。"""
+        payload = self.request(
+            f"/books/{book_id}/percent",
+            params={"chapter_id": chapter_id, "sentence_id": sentence_id},
         )
+        return float(payload.get("percent", 0.0))
 
     def search(self, book_id: str, query: str, limit: int = 20) -> dict:
         return self.request(f"/books/{book_id}/search", params={"q": query, "limit": limit})

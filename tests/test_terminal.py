@@ -101,107 +101,6 @@ def test_terminal_moves_the_cursor(server, epub2_bytes: bytes):
     asyncio.run(scenario())
 
 
-def test_terminal_pushes_the_progress(server, epub2_bytes: bytes):
-    """``s`` sends the position to the server."""
-    from lector_tui.app import LectorApp
-
-    import httpx
-
-    upload = httpx.post(
-        f"{server}/api/v1/books",
-        files={"file": ("book.epub", epub2_bytes, "application/epub+zip")},
-    )
-    book_id = upload.json()["book"]["book_id"]
-
-    async def scenario():
-        app = LectorApp(base_url=server)
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            await pilot.press("enter")
-            await pilot.pause()
-            await pilot.press("right")
-            await pilot.pause()
-            await pilot.press("s")
-            await pilot.pause()
-            progress = httpx.get(f"{server}/api/v1/books/{book_id}/progress").json()
-            assert progress["cursor"] is not None
-            assert progress["cursor"]["sentence_id"] == app.screen.cursor["sentence_id"]
-            assert progress["updated_by"] == "terminal"
-
-    asyncio.run(scenario())
-
-
-def test_terminal_pushes_the_progress_automatically(server, epub2_bytes: bytes):
-    """The terminal pushes its position without anyone pressing a key."""
-    import sys
-    from pathlib import Path
-
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "terminal"))
-    from lector_tui.app import LectorApp
-
-    import httpx
-
-    upload = httpx.post(
-        f"{server}/api/v1/books",
-        files={"file": ("book.epub", epub2_bytes, "application/epub+zip")},
-    )
-    book_id = upload.json()["book"]["book_id"]
-
-    async def scenario():
-        app = LectorApp(base_url=server)
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            await pilot.press("enter")
-            await pilot.pause()
-            await pilot.press("right")
-            await pilot.pause()
-            # 停下 1.2 秒后自动推送
-            await pilot.pause(1.6)
-            progress = httpx.get(f"{server}/api/v1/books/{book_id}/progress").json()
-            assert progress["cursor"] is not None
-            assert progress["cursor"]["sentence_id"] == app.screen.cursor["sentence_id"]
-            assert progress["updated_by"] == "terminal"
-
-    asyncio.run(scenario())
-
-
-def test_terminal_pulls_the_progress(server, epub2_bytes: bytes):
-    """``S`` takes the position the web end left behind."""
-    import sys
-    from pathlib import Path
-
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "terminal"))
-    from lector_tui.app import LectorApp
-
-    import httpx
-
-    upload = httpx.post(
-        f"{server}/api/v1/books",
-        files={"file": ("book.epub", epub2_bytes, "application/epub+zip")},
-    )
-    book_id = upload.json()["book"]["book_id"]
-
-    async def scenario():
-        app = LectorApp(base_url=server)
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            await pilot.press("enter")
-            await pilot.pause()
-            sentences = app.screen.sentences
-            target = sentences[-1]["id"]
-            # 网页端先写好位置
-            httpx.put(
-                f"{server}/api/v1/books/{book_id}/progress",
-                json={"chapter_id": "c0", "sentence_id": target},
-                headers={"X-Lector-Client": "web"},
-            )
-            await pilot.press("S")
-            await pilot.pause()
-            assert app.screen.cursor["sentence_id"] == target
-
-    asyncio.run(scenario())
-
-
 def test_vim_keys_move_the_cursor(server, epub2_bytes: bytes):
     """``h`` and ``l`` move the cursor the way vim moves the cursor."""
     import sys
@@ -379,3 +278,78 @@ def test_the_shelf_moves_with_jk(server, epub2_bytes: bytes):
             assert app.screen.__class__.__name__ == "ReaderScreen"
 
     asyncio.run(scenario())
+
+
+def test_terminal_remembers_the_position_locally(server, epub2_bytes: bytes, tmp_path, monkeypatch):
+    """终端把位置记在自己的文件里，重启还接着上次那一处。"""
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "terminal"))
+    from lector_tui.app import LectorApp
+
+    import httpx
+
+    progress_file = tmp_path / "progress.json"
+    monkeypatch.setenv("LECTOR_PROGRESS_FILE", str(progress_file))
+    httpx.post(
+        f"{server}/api/v1/books",
+        files={"file": ("book.epub", epub2_bytes, "application/epub+zip")},
+    )
+
+    async def first_run() -> str:
+        app = LectorApp(base_url=server)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("enter")
+            await pilot.pause()
+            await pilot.press("l")
+            await pilot.press("l")
+            await pilot.pause()
+            return app.screen.cursor["sentence_id"]
+
+    saved = asyncio.run(first_run())
+    assert progress_file.exists()
+
+    async def second_run() -> str:
+        app = LectorApp(base_url=server)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("enter")
+            await pilot.pause()
+            return app.screen.cursor["sentence_id"]
+
+    assert asyncio.run(second_run()) == saved
+
+
+def test_terminal_does_not_touch_the_servers_progress(server, epub2_bytes: bytes, tmp_path, monkeypatch):
+    """终端只读：它不动服务端的进度，也不会把网页顶走。"""
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "terminal"))
+    from lector_tui.app import LectorApp
+
+    import httpx
+
+    monkeypatch.setenv("LECTOR_PROGRESS_FILE", str(tmp_path / "progress.json"))
+    upload = httpx.post(
+        f"{server}/api/v1/books",
+        files={"file": ("book.epub", epub2_bytes, "application/epub+zip")},
+    )
+    book_id = upload.json()["book"]["book_id"]
+
+    async def scenario():
+        app = LectorApp(base_url=server)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("enter")
+            await pilot.pause()
+            for _ in range(3):
+                await pilot.press("l")
+                await pilot.pause()
+            await pilot.pause(1.5)
+
+    asyncio.run(scenario())
+    progress = httpx.get(f"{server}/api/v1/books/{book_id}/progress").json()
+    assert progress["cursor"] is None

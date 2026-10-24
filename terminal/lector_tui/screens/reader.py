@@ -17,6 +17,7 @@ from textual.screen import Screen
 from textual.events import Key
 from textual.widgets import Footer, Input, ListItem, ListView, Static
 
+from lector_tui.config import ProgressStore
 from lector_tui.widgets import VimListView
 
 #: How many columns the directory takes.
@@ -227,8 +228,6 @@ class BaseReaderScreen(Screen):
         # 其余
         Binding("tab", "focus_toc", "目录"),
         Binding("ctrl+w", "switch_pane", "切换窗格"),
-        Binding("s", "push_progress", "同步进度"),
-        Binding("S", "pull_progress", "拉取进度"),
         Binding("q", "back", "返回"),
     ]
 
@@ -243,7 +242,8 @@ class BaseReaderScreen(Screen):
         self.sentences: list[dict] = []
         self.sentence_index = 0
         self.cursor: dict | None = None
-        self._push_timer = None
+        self.progress = ProgressStore.load()
+        self._percent_timer = None
         self._hits: list[dict] = []
         self._hit_index = -1
         self._pane_mode = "toc"
@@ -281,8 +281,8 @@ class BaseReaderScreen(Screen):
             {node["chapter_id"] for node in self.toc if node.get("chapter_id")}
         ) or [f"c{index}" for index in range(self.book.get("chapter_count", 0))]
         self.render_toc()
-        progress = detail.get("progress") or {}
-        cursor = progress.get("cursor")
+        # 位置只认本地这一份：终端与网页各记各的，互不影响。
+        cursor = self.progress.get(self.book_id)
         chapter_id = cursor["chapter_id"] if cursor else None
         if chapter_id is None:
             chapter_id = self.first_readable_chapter()
@@ -355,7 +355,8 @@ class BaseReaderScreen(Screen):
         if scroll:
             self.scroll_to_cursor()
         self.update_status()
-        self.schedule_push()
+        self.remember_position()
+        self.schedule_percent()
 
     def scroll_to_cursor(self, center: bool = False) -> None:
         """Keep the current sentence visible."""
@@ -378,7 +379,7 @@ class BaseReaderScreen(Screen):
         chapter_title = self.chapter.get("title", "") if self.chapter else ""
         self.query_one("#status-bar", Static).update(
             f" {chapter_title} · {percent}% · 句 {current}/{total} · "
-            "s 同步 · Space 听书 · q 返回"
+            "Space 听书 · q 返回"
         )
 
     # -- actions ---------------------------------------------------------
@@ -557,55 +558,40 @@ class BaseReaderScreen(Screen):
     def action_back(self) -> None:
         self.app.pop_screen()
 
-    def schedule_push(self) -> None:
-        """Push the position once the reader stops moving.
+    def remember_position(self) -> None:
+        """把位置记到本地文件里 —— 终端自己的位置，不发给任何人。"""
+        if not self.cursor or not self.chapter:
+            return
+        self.progress.set(
+            self.book_id,
+            self.cursor["chapter_id"],
+            self.cursor["sentence_id"],
+            self.cursor.get("word_index"),
+        )
 
-        The web end reads the same progress, so this is what keeps the two
-        ends in step without anyone pressing a key.
-        """
-        if self._push_timer is not None:
-            self._push_timer.stop()
-        self._push_timer = self.set_timer(1.2, self.push_progress_now)
+    def schedule_percent(self) -> None:
+        """停下来一会儿再去问百分比，别每挪一句就发一次请求。"""
+        if self._percent_timer is not None:
+            self._percent_timer.stop()
+        self._percent_timer = self.set_timer(0.8, self.refresh_percent)
 
-    def push_progress_now(self, quiet: bool = True) -> None:
-        """Send the position to the server."""
+    def refresh_percent(self) -> None:
         if not self.cursor:
             return
         try:
-            self.app.api.set_progress(
-                self.book_id,
-                self.cursor["chapter_id"],
-                self.cursor["sentence_id"],
-                self.cursor.get("word_index"),
+            percent = self.app.api.percent(
+                self.book_id, self.cursor["chapter_id"], self.cursor["sentence_id"]
             )
-            if not quiet:
-                self.notify("进度已同步", title="进度")
-        except Exception as exc:  # noqa: BLE001
-            self.notify(f"同步失败：{exc}", title="错误", severity="error")
-
-    def action_push_progress(self) -> None:
-        """Send the position to the server."""
-        self.push_progress_now(quiet=False)
-
-    def action_pull_progress(self) -> None:
-        """Take the position from the server."""
-        try:
-            progress = self.app.api.get_progress(self.book_id)
-        except Exception as exc:  # noqa: BLE001
-            self.notify(f"拉取失败：{exc}", title="错误", severity="error")
+        except Exception:  # noqa: BLE001 - 百分比算不出来不影响阅读
             return
-        cursor = progress.get("cursor")
-        if not cursor:
-            self.notify("服务器上没有进度", title="进度")
-            return
-        if cursor["chapter_id"] != (self.chapter or {}).get("chapter_id"):
-            self.load_chapter(cursor["chapter_id"], cursor["sentence_id"])
-        else:
-            for position, sentence in enumerate(self.sentences):
-                if sentence["id"] == cursor["sentence_id"]:
-                    self.set_cursor(position)
-                    break
-        self.notify("已拉取服务器进度", title="进度")
+        self.progress.set(
+            self.book_id,
+            self.cursor["chapter_id"],
+            self.cursor["sentence_id"],
+            self.cursor.get("word_index"),
+            percent,
+        )
+        self.update_status()
 
     # -- events ----------------------------------------------------------
     def on_input_submitted(self, event: Input.Submitted) -> None:

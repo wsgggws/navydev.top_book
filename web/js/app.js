@@ -304,12 +304,11 @@ async function openBook(bookId) {
     state.settings.voiceId = savedFits ? saved.voice_id : '';
     await loadVoices();
     rememberVoiceChoice();
-    const progress = payload.progress;
-    // 服务器上没有进度就用本地记的（换了设备或服务端还没写进去时）。
+    // 位置只认本地这一份：网页与终端各记各的，互不影响。
     const local = state.prefsFor(bookId).position;
-    const target = progress && progress.cursor
-      ? progress.cursor
-      : (local ? { chapter_id: local.chapter_id, sentence_id: local.sentence_id, word_index: local.word_index } : null);
+    const target = local
+      ? { chapter_id: local.chapter_id, sentence_id: local.sentence_id, word_index: local.word_index }
+      : null;
     if (target) {
       await loadChapter(target.chapter_id, target.sentence_id);
     } else {
@@ -400,19 +399,41 @@ async function loadTimeline(chapterId) {
 /* 游标与进度                                                          */
 /* ------------------------------------------------------------------ */
 
-const writeProgress = debounce(async () => {
+/**
+ * 位置只记在浏览器本地。
+ *
+ * 网页与终端是两套独立的阅读器：在终端读到哪，不会把网页顶走，
+ * 反之亦然。服务端只帮忙把游标换算成百分比，不存位置。
+ */
+function rememberPosition(cursor) {
+  if (!state.book) return;
+  const bookId = state.book.book_id;
+  const previous = state.prefsFor(bookId).position || {};
+  const sameSentence = previous.chapter_id === cursor.chapter_id
+    && previous.sentence_id === cursor.sentence_id;
+  state.setPref(bookId, 'position', {
+    chapter_id: cursor.chapter_id,
+    sentence_id: cursor.sentence_id,
+    word_index: cursor.word_index,
+    percent: sameSentence ? (previous.percent || 0) : 0,
+  });
+}
+
+const measureProgress = debounce(async () => {
   if (!state.book || !state.cursor) return;
-  const { chapter_id: chapterId, sentence_id: sentenceId, word_index: wordIndex } = state.cursor;
+  const { chapter_id: chapterId, sentence_id: sentenceId } = state.cursor;
   try {
-    await api.setProgress(state.book.book_id, {
-      chapter_id: chapterId,
-      sentence_id: sentenceId,
-      word_index: wordIndex ?? null,
+    const payload = await api.percent(state.book.book_id, chapterId, sentenceId);
+    const prefs = state.prefsFor(state.book.book_id);
+    if (!prefs.position || prefs.position.sentence_id !== sentenceId) return;
+    state.setPref(state.book.book_id, 'position', {
+      ...prefs.position,
+      percent: payload.percent,
     });
   } catch (error) {
-    /* 进度写失败不影响阅读 */
+    /* 百分比算不出来不影响阅读 */
   }
-}, 600);
+}, 400);
 
 /* 提前把音频准备好：打开一章就在后台预热开头几句，
  * 播放时就不用等网络。 */
@@ -430,45 +451,9 @@ function warmAhead(chapterId) {
   });
 }
 
-/* 跨端接力：网页与终端读写同一份进度。
- * 终端停下 1.2 秒就推一次，网页每 5 秒拉一次；谁先动谁说了算，
- * 另一端在没有本地操作时跟随过去。 */
-let lastLocalMove = 0;
-
-const pullRemoteProgress = setInterval(async () => {
-  if (!state.book || !state.chapter) return;
-  if (document.hidden) return;
-  if (!dom.body.classList.contains('view-reader')) return;
-  if (Date.now() - lastLocalMove < 3000) return;
-  let progress;
-  try {
-    progress = await api.getProgress(state.book.book_id);
-  } catch (error) {
-    return;
-  }
-  const remote = progress && progress.cursor;
-  if (!remote) return;
-  if (state.cursor
-      && remote.chapter_id === state.cursor.chapter_id
-      && remote.sentence_id === state.cursor.sentence_id) return;
-  await followRemote(remote);
-}, 5000);
-
-async function followRemote(remote) {
-  toast('已跟随另一端的进度');
-  if (remote.chapter_id !== (state.chapter && state.chapter.chapter_id)) {
-    await loadChapter(remote.chapter_id, remote.sentence_id);
-    return;
-  }
-  lastLocalMove = Date.now();
-  moveCursor(remote.sentence_id);
-  reader.jumpTo(remote.sentence_id, { smooth: false });
-}
-
 function moveCursor(sentenceId, { scroll = false } = {}) {
   const sentence = state.findSentence(sentenceId);
   if (!sentence) return;
-  lastLocalMove = Date.now();
   const chapterId = sentenceId.split('.b')[0];
   const cursor = {
     book_id: state.book.book_id,
@@ -478,15 +463,8 @@ function moveCursor(sentenceId, { scroll = false } = {}) {
   };
   state.setCursor(cursor, 'move');
   reader.setCurrent(sentenceId, { scroll });
-  // 本地也记一份：换设备、服务端暂时连不上时不至于从头开始。
-  if (state.book) {
-    state.setPref(state.book.book_id, 'position', {
-      chapter_id: cursor.chapter_id,
-      sentence_id: cursor.sentence_id,
-      word_index: cursor.word_index,
-    });
-  }
-  writeProgress();
+  rememberPosition(cursor);
+  measureProgress();
 }
 
 function onSentenceClick(sentenceId) {
@@ -596,7 +574,7 @@ player.onSentence = (sentenceId, words, granularity) => {
   reader.locked = true;
   if (state.cursor && state.cursor.sentence_id !== sentenceId) {
     state.setCursor({ ...state.cursor, sentence_id: sentenceId }, 'play');
-    writeProgress();
+    rememberPosition(state.cursor);
   }
   // 新合成的句子还没进时间线，拉一次，让进度条和总时长跟上。
   if (!state.timeline.some((item) => item.sentence_id === sentenceId)) {
@@ -741,7 +719,20 @@ $('#btn-clear-audio').addEventListener('click', async () => {
 $('#btn-export-progress').addEventListener('click', async () => {
   if (!state.book) return;
   try {
-    const progress = await api.getProgress(state.book.book_id);
+    // 导出的是这一端本地记的进度，不是服务器上的。
+    const position = state.prefsFor(state.book.book_id).position || null;
+    const progress = {
+      book_id: state.book.book_id,
+      cursor: position
+        ? {
+          chapter_id: position.chapter_id,
+          sentence_id: position.sentence_id,
+          word_index: position.word_index ?? null,
+        }
+        : null,
+      percent: position ? position.percent || 0 : 0,
+      source: 'local',
+    };
     const blob = new Blob([JSON.stringify(progress, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');

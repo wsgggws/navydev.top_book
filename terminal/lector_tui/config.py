@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 #: Where the settings live.
@@ -16,6 +16,7 @@ CONFIG_DIR = Path(
     os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config")
 ) / "lector"
 CONFIG_FILE = CONFIG_DIR / "reader.json"
+PROGRESS_FILE = CONFIG_DIR / "progress.json"
 
 
 @dataclass
@@ -64,3 +65,74 @@ class ClientConfig:
         if self.token:
             return f"{self.url}（已带令牌）"
         return self.url
+
+
+@dataclass
+class ProgressStore:
+    """终端自己的阅读位置。
+
+    网页与终端是两套独立的阅读器：这里记的是"这台机器上的终端读到哪"，
+    不和服务端、也不和网页共享。
+    """
+
+    path: Path = PROGRESS_FILE
+    data: dict = field(default_factory=dict)
+
+    @classmethod
+    def load(cls, path: Path | None = None) -> "ProgressStore":
+        override = os.environ.get("LECTOR_PROGRESS_FILE")
+        store = cls(path=path or (Path(override) if override else PROGRESS_FILE))
+        if store.path.exists():
+            try:
+                payload = json.loads(store.path.read_text("utf-8"))
+                if isinstance(payload, dict):
+                    store.data = payload
+            except (OSError, ValueError):
+                pass
+        return store
+
+    def get(self, book_id: str) -> dict | None:
+        """这本书上次读到哪。"""
+        entry = self.data.get(book_id)
+        return dict(entry) if isinstance(entry, dict) else None
+
+    def set(
+        self,
+        book_id: str,
+        chapter_id: str,
+        sentence_id: str,
+        word_index: int | None = None,
+        percent: float | None = None,
+    ) -> None:
+        """记下位置；百分比由调用方算了才传。"""
+        previous = self.data.get(book_id) or {}
+        if percent is None:
+            same = (
+                previous.get("chapter_id") == chapter_id
+                and previous.get("sentence_id") == sentence_id
+            )
+            percent = previous.get("percent", 0.0) if same else 0.0
+        self.data[book_id] = {
+            "chapter_id": chapter_id,
+            "sentence_id": sentence_id,
+            "word_index": word_index,
+            "percent": percent,
+        }
+        self.save()
+
+    def percent(self, book_id: str) -> float:
+        entry = self.data.get(book_id) or {}
+        try:
+            return float(entry.get("percent", 0.0))
+        except (TypeError, ValueError):
+            return 0.0
+
+    def save(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self.path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(self.data, ensure_ascii=False, indent=2), "utf-8")
+        tmp.replace(self.path)
+        try:
+            self.path.chmod(0o600)
+        except OSError:
+            pass

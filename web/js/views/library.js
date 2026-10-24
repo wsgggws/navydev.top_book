@@ -4,6 +4,12 @@ import { api } from '../api.js';
 import { state } from '../state.js';
 import { el } from '../util.js';
 
+/** 这本书在本浏览器里读到百分之多少。 */
+function localPercent(book) {
+  const prefs = state.bookPrefs[book.book_id];
+  return (prefs && prefs.position && prefs.position.percent) || 0;
+}
+
 export class LibraryView {
   constructor(root, { onOpen, onToast }) {
     this.root = root;
@@ -106,7 +112,11 @@ export class LibraryView {
       el('span', { class: 'card-title', text: book.title }),
       el('span', { class: 'card-author', text: book.author || '未知作者' }),
       el('span', { class: 'card-progress' }, [
-        el('span', { class: 'card-progress-fill', style: `width:${Math.round((book.progress || 0) * 100)}%` }),
+        el('span', {
+          class: 'card-progress-fill',
+          // 进度是这一端自己记的，不和服务端也不和终端共享。
+          style: `width:${Math.round(localPercent(book) * 100)}%`,
+        }),
       ]),
     ]);
   }

@@ -86,13 +86,11 @@ export const api = {
   }),
   clearAudio: (bookId) => request(`/books/${bookId}/audio`, { method: 'DELETE' }),
 
-  getProgress: (bookId) => request(`/books/${bookId}/progress`),
-  setProgress: (bookId, body) => request(`/books/${bookId}/progress`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json', 'X-Lector-Client': 'web' },
-    body: JSON.stringify(body),
-  }),
-
+  /** 把游标换算成全书百分比（服务端不记任何东西）。 */
+  percent: (bookId, chapterId, sentenceId) => request(
+    `/books/${bookId}/percent?chapter_id=${encodeURIComponent(chapterId)}`
+    + `&sentence_id=${encodeURIComponent(sentenceId)}`,
+  ),
   search: (bookId, query, limit = 50) =>
     request(`/books/${bookId}/search?q=${encodeURIComponent(query)}&limit=${limit}`),
 

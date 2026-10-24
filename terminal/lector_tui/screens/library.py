@@ -12,6 +12,7 @@ from textual.containers import Vertical
 from textual.screen import Screen
 from textual.widgets import Footer, Input, Label, ListItem, Static
 
+from lector_tui.config import ProgressStore
 from lector_tui.widgets import VimListView
 
 from lector_tui.screens.reader import ReaderScreen
@@ -64,8 +65,10 @@ class LibraryScreen(Screen):
         if not self._books:
             listing.append(ListItem(Label("（空）")))
             return
+        # 进度是这台机器的终端自己记的，跟网页和服务器都无关。
+        progress = ProgressStore.load()
         for book in self._books:
-            percent = int((book.get("progress") or 0) * 100)
+            percent = int(progress.percent(book["book_id"]) * 100)
             label = Label(
                 f"▸ {book['title']}\n"
                 f"  {book.get('author') or '未知作者'}   "
