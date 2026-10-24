@@ -80,6 +80,7 @@ class Book(BaseModel):
     cover_url: str | None = None
     chapter_count: int = 0
     sentence_count: int = 0
+    progress: float = 0.0
     tts_state: TtsState = "pending"
     created_at: str
     updated_at: str

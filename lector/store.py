@@ -218,8 +218,15 @@ class Store:
         return self._row_to_book(row) if row else None
 
     def list_books(self, limit: int = 50, offset: int = 0) -> list[Book]:
+        """The shelf, with each book's own reading progress."""
         rows = self.db.query(
-            "SELECT * FROM books ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+            """
+            SELECT b.*, COALESCE(p.percent, 0) AS progress
+            FROM books b
+            LEFT JOIN progress p ON p.book_id = b.book_id
+            ORDER BY b.updated_at DESC
+            LIMIT ? OFFSET ?
+            """,
             (limit, offset),
         )
         return [self._row_to_book(row) for row in rows]
@@ -366,7 +373,9 @@ class Store:
     # -- helpers ---------------------------------------------------------
     def _row_to_book(self, row: Any) -> Book:
         has_cover = bool(row["cover_path"])
+        keys = row.keys()
         return Book(
+            progress=float(row["progress"]) if "progress" in keys else 0.0,
             book_id=row["book_id"],
             title=row["title"],
             author=row["author"],

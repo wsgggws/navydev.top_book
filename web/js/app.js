@@ -261,13 +261,18 @@ function showLibrary() {
   dom.topbarBook.textContent = 'Lector';
   dom.topbarChapter.textContent = '';
   dom.player.hidden = true;
-  player.stop();
+  player.release();
   library.refresh();
 }
 
 async function openBook(bookId) {
   try {
     const payload = await api.getBook(bookId);
+    // 换书就换书：上一本的音频要停掉，缓存也要清掉。
+    if (state.book && state.book.book_id !== bookId) {
+      player.release();
+      if (state.cursor) reader.clearWords(state.cursor.sentence_id);
+    }
     state.book = payload.book;
     state.rememberBook(bookId);
     dom.body.classList.remove('view-library');

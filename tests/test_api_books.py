@@ -164,3 +164,23 @@ def test_media_endpoint_serves_images(client, epub2_bytes: bytes):
     assert response.headers["content-type"] == "image/jpeg"
     assert response.content.startswith(b"\xff\xd8")
     assert client.get(f"/api/v1/books/{book_id}/media/../../etc/passwd").status_code in (404, 400)
+
+
+def test_the_shelf_shows_each_books_own_progress(client, epub2_bytes: bytes):
+    """每本书各记各的进度。"""
+    from factories import build_epub2
+
+    other = build_epub2(title="另一本", author="乙")
+    first_id = upload(client, epub2_bytes).json()["book"]["book_id"]
+    second_id = upload(client, other).json()["book"]["book_id"]
+
+    chapter = client.get(f"/api/v1/books/{first_id}/chapters/c0").json()["chapter"]
+    sentence_id = chapter["blocks"][1]["sentences"][0]["id"]
+    client.put(
+        f"/api/v1/books/{first_id}/progress",
+        json={"chapter_id": "c0", "sentence_id": sentence_id},
+    )
+
+    books = {book["book_id"]: book for book in client.get("/api/v1/books").json()}
+    assert books[first_id]["progress"] > 0
+    assert books[second_id]["progress"] == 0

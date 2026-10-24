@@ -110,6 +110,7 @@ uv run lector
   "cover_url": "/api/v1/books/b_9f3a2c1d/cover",
   "chapter_count": 27,
   "sentence_count": 8421,
+  "progress": 0.423,
   "tts_state": "ready",
   "created_at": "2026-10-24T08:00:00Z",
   "updated_at": "2026-10-24T08:12:33Z"
@@ -126,6 +127,9 @@ uv run lector
 | `failed` | 引擎持续失败，可重试 |
 
 `cover_url` 在无封面时为 `null`。
+
+- `progress` 是这本书自己的阅读进度（`[0, 1]`），按字数加权。**每本书各记各的**，
+  进度存在服务端，与浏览器无关；换设备打开同一本书会接着上次的位置读。
 
 ### 1.2 Chapter
 

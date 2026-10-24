@@ -62,9 +62,21 @@ export class Player {
 
   get rateParam() { return '+0%'; }
 
+  /**
+   * The cache key of a tile.
+   *
+   * Sentence ids are only unique inside one book — every book has a
+   * ``c0.b0.s0`` — so the book has to be part of the key.  Without it,
+   * switching books would replay the previous book's audio.
+   */
+  _key(sentenceId) {
+    return `${state.book ? state.book.book_id : ''}|${sentenceId}`;
+  }
+
   /** Fetch the audio of a sentence, reusing the blob when it is known. */
   async _fetchAudio(sentenceId) {
-    if (this.blobUrls.has(sentenceId)) return this.blobUrls.get(sentenceId);
+    const key = this._key(sentenceId);
+    if (this.blobUrls.has(key)) return this.blobUrls.get(key);
     const response = await fetch(
       api.audioUrl(state.book.book_id, sentenceId, this.voiceId, this.rateParam),
     );
@@ -82,7 +94,7 @@ export class Player {
     }
     const blob = await response.blob();
     const url = URL.createObjectURL(blob);
-    this.blobUrls.set(sentenceId, url);
+    this.blobUrls.set(key, url);
     return url;
   }
 
@@ -216,9 +228,21 @@ export class Player {
     return (index + 1) / sentences.length;
   }
 
+  /**
+   * Stop and forget everything.
+   *
+   * Called when the reader switches to another book: the audio has to stop
+   * and the cached tiles of the previous book have to go, otherwise the old
+   * book keeps playing.
+   */
   release() {
+    this.stop();
     for (const url of this.blobUrls.values()) URL.revokeObjectURL(url);
     this.blobUrls.clear();
+    this.sentenceId = null;
+    this.words = [];
+    this.granularity = 'sentence';
+    this._currentWord = -1;
   }
 }
 
