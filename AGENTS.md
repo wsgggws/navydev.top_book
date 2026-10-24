@@ -1,190 +1,142 @@
 # AGENTS.md
 
-你在维护 **navydev.top_ebook（Lector）** —— 一个有声电子书阅读与收听服务。
-网页端与终端端共享同一台内容服务，但阅读位置和播放选项各自独立记录。
+你在维护 **navydev.top_ebook**：一个 EPUB 有声电子书服务，包含网页端和独立的终端端。
+两端共享内容和全局打开次数，但阅读位置、音色、倍速等个人状态各自保存在本地。
 
-## 首要原则
+## 核心模型
 
-**位置只有一种表示。** 每一端保存的阅读位置永远是
-`Cursor = {book_id, chapter_id, sentence_id, word_index}`。当前句高亮、逐词高亮、
-本机进度存储、短码分享，全部是这一个游标的不同投影。任何新增的"位置"概念都是
-bug，不是特性。
+**位置只有一种表示**：
 
-## 必读指针
+```text
+Cursor = {book_id, chapter_id, sentence_id, word_index}
+```
 
-按需触发，不要预先全读：
+高亮、逐词朗读、本地进度、短码分享都是这个游标的投影。不要引入页码、段落序号等
+第二套位置。
 
-- **改动任何 HTTP 端点、字段名、错误码、状态码之前** → 读 `docs/API.md`。它是 API 的**契约**，唯一事实来源。
-- **改动界面、主题、快捷键、布局之前** → 读 `docs/UI.md`。它是界面的**契约**，唯一事实来源。
-- **不确定某个功能该不该做、该做到什么程度** → 读 `PROMPT.md` 的「边界」与「完成定义」。它定义了产品范围。
-- **解析 EPUB 的异常行为** → 读 `PROMPT.md` §4「内容模型」与 §7 阶段 1 的验收项。
+## 先读契约
 
-契约与实现冲突时：以契约为准，改实现。若确信契约本身该改，**先改契约文件，再改实现**，两者同一个提交里完成。
+- 改 HTTP 端点、字段、错误码、状态码：先读 `docs/API.md`
+- 改界面、主题、快捷键、布局：先读 `docs/UI.md`
+- 不确定范围：读 `PROMPT.md` 的「边界」与「完成定义」
+- 改 EPUB 解析异常行为：读 `PROMPT.md` §4 与 §7 阶段 1
 
-## 常用命令
+契约与实现冲突时以契约为准。确需修改契约时，先改契约，再改实现，并在同一个提交完成。
 
-环境与依赖一律用 **uv** 管理，不要手工建 venv、也不要手工 pip install。
+## 两个独立项目
 
-仓库里有**两个互不干扰的项目**：
+环境统一使用 **uv + Python 3.12**。不要手工建 venv，也不要手工 `pip install`。
 
-| 项目 | 位置 | 装什么 | 跑什么 |
+| 项目 | 位置 | 启动 | 测试 |
 | --- | --- | --- | --- |
-| 服务端（含网页端） | 仓库根 | `uv sync` | `uv run lector-server` |
-| 终端端 | `terminal/` | `cd terminal && uv sync` | `cd terminal && uv run lector` |
-
-终端端只通过 HTTP 与服务端打交道，不依赖服务端的任何代码；服务端也不知道
-终端端的存在。两个项目各有自己的 `pyproject.toml` 与 `uv.lock`，可以分别安装、
-分别发版，谁也不牵动谁。
+| 服务端 + 网页端 | 仓库根 | `uv run lector-server` | `uv run pytest -q` |
+| 终端端 | `terminal/` | `cd terminal && uv run lector` | `cd terminal && uv run pytest -q` |
 
 ```bash
-# 服务端
 uv sync
-uv run lector-server                              # 默认 127.0.0.1:8000
-uv run uvicorn lector.web:app --reload --port 8000
-uv run pytest -q                    # 全量
-uv run pytest -q tests/test_epub.py # 单文件
-uv run pytest -q -k sentence        # 按名字过滤
-
-# 终端端（在它自己的目录里）
-cd terminal
-uv sync
-uv run lector
-uv run pytest -q
-
-# 端到端冒烟
-curl -s localhost:8000/api/v1/health | jq .
+make test
+make dev
+make book books/my.epub
 ```
 
-以上都有对应的 make 目标（`make help` 看全部）：
+- 两个项目各有自己的 `pyproject.toml` 和 `uv.lock`，都要提交。
+- 改依赖用 `uv add` / `uv remove`。
+- `requirements.txt` 只由 `uv export` 生成，不要手改。
+- 前端是原生 ES Modules + CSS，没有 `package.json`、打包器或前端 lint。
 
-```bash
-make test            # 两个项目的测试都跑
-make server          # uv run lector-server
-make dev             # 带热重载的服务端
-make terminal        # 终端端
-make book books/my.epub     # 造一本书（或把已有的 EPUB 收进书架）
-make import books/my.epub   # 把已有的 EPUB 送进服务端
-```
+## 开发工作流
 
-线上发布由 `.github/workflows/deploy.yml` 完成：先跑两端测试，再通过 SSH 上传
-release，GitHub Actions 构建并推送镜像到 GHCR，服务器在
-`~/deploy/navydev.top_ebook/releases/<sha>` 解包并执行
-`make docker-release`，最后切换 `current` 软链。生产容器只监听
-`127.0.0.1:8010`，数据在 Docker 命名卷 `navydev-top-ebook-data`。
-**不要改回 systemd。**
+### 新功能
 
-- 每个项目各有自己的 `pyproject.toml` 与 `uv.lock`，都是该项目的依赖事实来源，都要提交。
-- `requirements.txt` 是由 `uv export --format requirements-txt --no-hashes --no-emit-project --output-file requirements.txt` 生成的产物，**不要手工编辑**。只在需要 pip 环境时用它。
-- 改依赖用 `uv add <包>` / `uv remove <包>`，不要手写 `pyproject.toml` 里的版本号。
-- 新增运行时依赖仍要遵守下面的依赖白名单。
-- 构建期依赖（`hatchling`）不进运行时环境，不受白名单约束。
+1. 确认需求在 `PROMPT.md` 范围内。
+2. 阅读对应 API/UI 契约。
+3. 列出要改的具体文件。
+4. 实现并同步契约。
+5. 添加测试，运行两端 `pytest -q`。
+6. 汇报文件、契约变更、测试结果和已知缺口。
 
-没有 `package.json`、没有前端构建步骤、没有 lint 配置。改动靠 `pytest` 验证，靠肉眼验证界面。
+### 修 Bug
 
-## 在项目里造一本书
+1. 先写可稳定复现的失败测试并确认失败。
+2. 修实现直到测试通过。
+3. 跑全量测试，确认没有回归。
 
-`make book books/my.epub` 把 Markdown 源变成 EPUB，并顺手送进正在跑的服务端，
-网页端立刻能看能听。**目标文件已经存在又没有源时，它不重建，只把成品收进书架** ——
-所以「把一本书加进来」和「造一本书」是同一条命令。
+### 新阶段
 
-路径里有空格时 make 会把目标拆开，用 `BOOK="路径 带空格.epub"` 的写法最稳
-（不带空格的路径直接跟在目标后面也行，Makefile 会用 wordlist 拼回去）。
-
-源可以是单个 Markdown 文件，也可以是一个目录：
-
-```
-books/my/
-    meta.json        # {"title": …, "author": …, "language": …, "cover": "images/cover.jpg"}
-    01-开始.md       # 每个 .md 一个章节，按文件名排序
-    02-之后.md
-    images/          # 章节里引用的图片
-```
-
-- Markdown 子集很小：标题、段落、列表、引用、代码块、分隔线、图片、行内的粗/斜/代码/链接。
-- 不引第三方 Markdown 库：`lector/build.py` 自己实现，输出 EPUB2（NCX 目录），
-  生成的文件能被本项目的解析器读回来。
-- 仓库书库文件名是展示元数据的唯一来源：`书名(作者).epub` 或
-  `书名（作者）.epub`；中英文括号都支持。服务启动同步时必须用文件名覆盖
-  EPUB 内嵌标题/作者，避免广告字段进入书架。
-- 目录节点与章节是两回事：目录节点带 `chapter_id` 与可选 `anchor`；客户端按
-  「取章节 → 按 anchor 找块 → 游标落到块首句」定位，不得拿节点 id 去请求章节端点。
-
-## 工作流
-
-### 开始一个新功能
-
-1. 在 `PROMPT.md` §9「边界」里确认它在范围内。范围外 → 停下并说明，不要自行扩大范围。
-2. 读对应的契约文件（`docs/API.md` 或 `docs/UI.md`）里相关的小节。
-3. 找出要改的落点，列出**具体文件路径**再动手。
-4. 实现时同步更新契约文件。
-5. 写测试，跑 `pytest -q`，确认全绿。
-6. 汇报：改了哪些文件、契约改了哪几节、测试结果。
-
-### 修一个 bug
-
-1. 先写一个**能复现该 bug 的失败测试**。跑一次，确认它确实失败。
-2. 改实现，让测试通过。
-3. 跑 `pytest -q` 确认没有连带破坏。
-
-复现测试是修复的**完成判据**：没有它，修复只是"看起来好了"。
-
-### 实现一个新阶段
-
-按 `PROMPT.md` §7 的阶段顺序推进。每个阶段的验收项是**逐条可检查**的清单，做完逐条对照汇报，不要笼统说"已完成"。
+按 `PROMPT.md` §7 的顺序推进，逐条对照验收项，不要笼统汇报“已完成”。
 
 ## 不变量
 
-这些是硬约束，改动时必须保持：
+- **ID 稳定**：`chapter = c{index}`、`block = c{chapter}.b{n}`、
+  `sentence = c{chapter}.b{block}.s{n}`。同一 EPUB 重复解析必须产生相同 ID；
+  解析行为改变时提升 `PARSER_VERSION`。
+- **目录与正文分离**：章节顺序由 spine 决定；TOC 节点只携带 `chapter_id`
+  和可选 `anchor`，不得拿 TOC 节点 id 请求章节。TOC 同时支持 EPUB3 `nav`
+  （优先）与 EPUB2 `NCX`。
+- **句子切分**：支持中英混排；中文句号/问号/叹号/分号/省略号及闭引号成句，
+  英文 `.!?` 后接空格或行尾成句；小数和 `Mr.`、`e.g.` 等缩写不切。
+  规则由 `tests/test_sentence_split.py` 锁定。
+- **净化白名单**：只允许 `href/src/alt/title/lang/dir/class`，`class` 仅
+  `epub-*`；拒绝 `javascript:`、`data:`；丢弃
+  `script/style/iframe/object/embed/form`。
+- **上传安全**：拒绝路径穿越和符号链接，限制解压膨胀比，上传上限 50MB。
+- **EPUB 解析**：只用标准库 `zipfile`、`ElementTree`、`html.parser`，不引入
+  第三方解析器；生成的文件必须让 `mimetype` 是首个且不压缩的条目，但解析时
+  不要依赖它的位置。
+- **音频缓存**：键为 `sha256(text | voice | rate | engine_version)`；同键必须复用。
+- **TTS 词边界**：引擎返回字素偏移，需要归一化为词级并换算成句内相对秒数；
+  espeak 回退没有词边界，`granularity` 降为 `"sentence"`。
+- **音色跟随语言**：中文默认 `zh-CN-YunxiNeural`，英文默认
+  `en-US-GuyNeural`；客户端通过 `GET /api/v1/meta` 读取映射，不各自硬编码。
+- **进度隔离**：网页和终端各存各的。网页以 `localStorage` 为准，终端以本地
+  JSON 为准；内置客户端不通过服务端同步位置。服务端 `/progress` 仅为兼容保留。
+- **网页进度计算**：游标变化时立即写本地位置；全书百分比通过
+  `/percent` 计算，并用约 400ms 防抖避免连续请求。
+- **打开次数**：`open_count` 是全局热度数据；网页只在用户主动打开书时调用
+  `POST /api/v1/books/{id}/open`。书架先按本地最近阅读，再按 `open_count` 排序。
+- **依赖白名单**：`fastapi`、`uvicorn`、`pydantic`、`edge-tts`、`textual`、
+  `pytest`、`httpx`、`python-multipart`。新增依赖必须说明标准库为何不够，
+  并更新契约或提交说明。`python-multipart` 是 FastAPI 解析上传表单所必需。
+- **权限**：阅读 API 公开；上传/删除/预热/清缓存需要 admin token。令牌支持
+  `<token>:admin` 和 `<token>:reader`；终端只读。
+- **浏览器防护**：生产 Nginx 和应用层拦截明显的 CLI User-Agent；健康检查、
+  带 `X-Lector-Client: terminal` 的终端、带 Bearer token 的管理请求例外。
+  无 token 的写请求必须同源。防护不能替代 token。
+- **部署**：GitHub Actions 构建镜像并通过 SSH + Docker Compose 发布；生产容器
+  只监听 `127.0.0.1:8010`，数据卷为 `navydev-top-ebook-data`。不要改回 systemd。
 
-- **ID 稳定性**：`chapter = c{index}`，`block = c{chapter}.b{n}`，`sentence = c{chapter}.b{block}.s{n}`。同一 EPUB 重复解析必须得到完全相同的 ID。解析器行为变更时，同步提升 `PARSER_VERSION`。
-- **目录与章节分层**：目录节点的 id 与章节 id 是两套命名。目录节点带 `chapter_id` 与可选 `anchor`；定位动作是「取章节 → 按 anchor 找块 → 游标落到块首句」。客户端不得拿目录节点 id 去请求章节端点。
-- **句子切分**：中英混排。中文标点 `。！？；…` 及闭引号成句；英文 `.!?` 后接空格或行尾成句；小数点、缩写（`Mr.`、`e.g.`）不成句。切分规则由 `tests/test_sentence_split.py` 锁定。
-- **净化白名单**：只放行 `href`/`src`/`alt`/`title`/`lang`/`dir`/`class`（`class` 仅 `epub-*` 前缀）。`javascript:` 与 `data:` URL 一律拒绝。`script`/`style`/`iframe`/`object`/`embed`/`form` 一律丢弃。
-- **上传安全**：拒绝 `..` 路径穿越条目、拒绝符号链接、限制解压膨胀比。上传上限 50MB。
-- **音频缓存**：缓存键 = `sha256(text | voice | rate | engine_version)`。同键必须复用，不重复合成。
-- **无第三方案例**：EPUB 解析走标准库 `zipfile` + `ElementTree` + `html.parser`，不引入第三方解析器。
-- **权限分级**：阅读接口公开，不需要令牌。`POST/DELETE` 书籍、音频预热与清缓存等
-  管理写操作要求 admin 令牌。令牌仍可带 `<token>:admin`（默认）或 `<token>:reader`
-  后缀；终端端只读，不需要令牌。
-- **依赖白名单**：`fastapi` `uvicorn` `pydantic` `edge-tts` `textual` `pytest` `httpx` `python-multipart`。新增依赖需要能回答"标准库为什么做不到"，并在提交说明里写清。
-  - `python-multipart`：`docs/API.md` §3 规定上传端点是 `multipart/form-data`，FastAPI 解析 multipart 表单强制依赖它；标准库的 `email`/`cgi` 无法被 FastAPI 直接使用（`cgi` 已在 Python 3.13 移除）。
-- **进度写入**：网页防抖 600ms 后写 `localStorage`；终端写自己的
-  `~/.config/lector/progress.json`。两端不互相覆盖。服务端 `/progress` 仅为
-  API 兼容保留，内置客户端不再用它同步位置。
-- **音色跟着书的语言走**：中文书默认中文男声（`zh-CN-YunxiNeural`），英文书默认美式男声
-  （`en-US-GuyNeural`）。映射写在 `lector/config.py` 的 `DEFAULT_VOICE_BY_LOCALE`，
-  客户端经 `GET /api/v1/meta` 的 `default_voices` 拿到同一份，不要各写一套。
+## 书籍构建
+
+- `make book books/my.epub` 可从 Markdown 生成并导入；目标 EPUB 已存在且没有源时
+  只导入成品。
+- 路径含空格用 `make book BOOK="books/路径 带空格.epub"`。
+- 目录源支持 `meta.json`、按文件名排序的 `.md` 章节和 `images/`。
+- 仓库书籍元数据以文件名 `书名(作者).epub` / `书名（作者）.epub` 为准；
+  中英文括号都支持，文件名优先于 EPUB 内嵌标题和作者。
+- Markdown 子集：标题、段落、列表、引用、代码块、分隔线、图片、行内粗体/斜体/
+  代码/链接；`lector/build.py` 自己实现，输出可回读的 EPUB2 + NCX。
 
 ## 约定
 
-- Python 3.12，全程类型注解。DTO 用 Pydantic，定义集中在 `lector/models.py`，与 `docs/API.md` 逐字段对应，不设字段别名。
-- 网页端是原生 ES Modules + CSS：每个文件一个职责，`views/` 放页面级模块，`util.js` 放纯函数。不引入框架或 UI 库。
-- 终端端用 Textual：屏幕放 `screens/`，与 `web/js/views/` 一一对应。
-- 命名：API 字段 `snake_case`；Python `snake_case`；JS `camelCase`。
-- 注释解释**为什么**，不解释**做了什么**。能自解释的代码不写注释。
-- 提交前跑 `pytest -q`，必须全绿。绿的截图/日志贴进汇报。
-- CI/CD 使用 uv 和 GitHub Actions；不要改成 pip/requirements 的运行时安装流程。
-
-## 常见坑
-
-- **EPUB 的 TOC 有两套**：EPUB3 用 `nav` 文档，EPUB2 用 `NCX`。两者都要支持，且 EPUB3 优先。`toc.py` 里两套解析器共用同一个归一化输出。
-- **章节顺序由 spine 决定**，不由 TOC 决定。TOC 是目录，spine 是正文顺序，两者不一致的 EPUB 真实存在。
-- **`mimetype` 必须是 zip 的第一个条目且不压缩**。部分 EPUB 不满足，解压时不要强制校验，但解析时不要依赖它的位置。
-- **TTS 的词边界是字素偏移**，需要归一化到词级，再换算成句内相对秒数。回退引擎（espeak）没有词边界，`granularity` 降为 `"sentence"`，前端相应不做词级拆分。
-- **音频 URL 不可变**：`audio/{sentence_id}.mp3` 的内容随内容哈希固定，可长期 `immutable` 缓存。换音色后要清缓存（`DELETE /books/{id}/audio`）。
-- **`audio_duration` 与实际时长可能不等**：合成器对同一段文本两次生成的时长略有差异。以 `timeline` 接口返回的 `start`/`end` 为准，不要用章节元数据里的 `audio_duration` 做播放定位。
-- **进度写入风暴**：网页拖动阅读位置会连续变化，必须防抖 600ms 后才写
-  `localStorage`；终端只在游标稳定后写本地文件。
+- Python 3.12，全程类型注解；DTO 集中在 `lector/models.py`，与 `docs/API.md`
+  字段一一对应，不设别名。
+- API 字段和 Python 用 `snake_case`，JS 用 `camelCase`。
+- 网页一个文件一个职责，纯函数放 `web/js/util.js`；终端屏幕放
+  `terminal/lector_tui/screens/`。
+- 注释解释“为什么”，不解释“做什么”。
+- 不重复合成同键音频；音频 URL 不可变，换音色/语速后由缓存键自然失效。
+- 音频播放以 timeline 的 `start/end` 为准，不用章节元数据里的
+  `audio_duration` 做定位。
 
 ## 完成判据
 
-一次工作算完成，当且仅当：
+工作完成必须同时满足：
 
-1. 需求项逐条实现，无遗漏、无部分完成。
-2. 新增行为有对应测试。
-3. 契约文件（`docs/API.md` / `docs/UI.md`）与实现一致。
-4. `pytest -q` 全绿。
-5. 无新增未列入白名单的依赖。
-6. 汇报里给出了：改了哪些文件、契约改了哪几节、测试输出、尚未完成或已知问题。
+1. 需求逐条实现，没有遗漏。
+2. 新行为有测试；Bug 有可复现的回归测试。
+3. `docs/API.md` / `docs/UI.md` 与实现一致。
+4. 服务端与终端端测试全绿。
+5. 没有新增白名单外依赖。
+6. 汇报改动文件、契约变化、测试输出、未完成项和已知问题。
 
-第 6 条不可省。**没做完就说没做完** —— 半成品加沉默，比明确报出缺口更贵。
+没做完就明确说没做完，不要用“看起来没问题”代替验证。
