@@ -419,18 +419,18 @@ def write_epub(source: BookSource, target: Path, images: dict[str, bytes]) -> Pa
 # ---------------------------------------------------------------------------
 
 
-def find_source(target: Path) -> Path:
+def find_source(target: Path) -> Path | None:
     """Where the sources of ``target`` live.
 
     ``books/some.epub`` is built from ``books/some.md`` or ``books/some/``.
+    ``None`` means there is no source — the file itself may already exist and
+    only needs to go into the library.
     """
     stem = target.with_suffix("")
     for candidate in (stem.with_suffix(".md"), stem):
         if candidate.exists():
             return candidate
-    raise BuildError(
-        f"找不到 {target} 的源文件：请先写 {stem.with_suffix('.md')} 或建目录 {stem}/"
-    )
+    return None
 
 
 def upload(path: Path, base_url: str, token: str = "") -> dict | None:
@@ -481,8 +481,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     target = Path(args.target)
-    if not args.import_only:
-        source = Path(args.source) if args.source else find_source(target)
+    source = Path(args.source) if args.source else find_source(target)
+
+    if args.import_only:
+        pass
+    elif source is not None:
         book = read_source(source)
         root = source if source.is_dir() else source.parent
         images = collect_images(book, root)
@@ -490,6 +493,16 @@ def main(argv: list[str] | None = None) -> int:
         print(
             f"已生成 {target}（{book.title}，{len(book.chapters)} 章，"
             f"{target.stat().st_size // 1024} KB）"
+        )
+    elif target.exists():
+        # 没有源，只有成品：那就直接送进书架。
+        print(f"{target} 已存在，直接送进书架")
+    else:
+        stem = target.with_suffix("")
+        raise BuildError(
+            f"找不到 {target}，也没有它的源文件。\n"
+            f"  · 要造一本：先写 {stem.with_suffix('.md')} 或建目录 {stem}/\n"
+            f"  · 要加一本现成的：把 .epub 放到那个位置再试"
         )
 
     if args.no_import:

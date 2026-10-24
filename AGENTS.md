@@ -63,7 +63,11 @@ make import books/some.epub # 把已有的 EPUB 送进服务端
 ## 在项目里造一本书
 
 `make book books/some.epub` 把 Markdown 源变成 EPUB，并顺手送进正在跑的服务端，
-网页端立刻能看能听。
+网页端立刻能看能听。**目标文件已经存在又没有源时，它不重建，只把成品收进书架** ——
+所以「把一本书加进来」和「造一本书」是同一条命令。
+
+路径里有空格时 make 会把目标拆开，用 `BOOK="路径 带空格.epub"` 的写法最稳
+（不带空格的路径直接跟在目标后面也行，Makefile 会用 wordlist 拼回去）。
 
 源可以是单个 Markdown 文件，也可以是一个目录：
 

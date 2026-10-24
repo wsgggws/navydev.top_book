@@ -1,10 +1,9 @@
 # Lector —— 常用命令
 #
-#   make book books/some.epub   生成一本书，并送进服务端
-#   make import books/some.epub  把已有的 EPUB 送进服务端
-#   make test                    跑测试
-#   make server                  起服务端
-#   make terminal                起终端端
+#   make book books/some.epub        造一本书（或把已有的 EPUB 收进书架）
+#   make book BOOK="路径 带空格.epub"  路径里有空格时用这种写法
+#   make import BOOK=books/x.epub    只把已有的 EPUB 送进服务端
+#   make test / server / terminal / dev / clean
 
 UV ?= uv
 BOOK ?= books/some.epub
@@ -17,21 +16,28 @@ help:  ## 显示这份清单
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
-# 文件名里有空格时用 BOOK=... 的写法：
-#   make import BOOK="books/Metaphors We Live By.epub"
-book:  ## 生成一本书：make book books/some.epub
-	@target="$(lastword $(MAKECMDGOALS))"; \
-	 if [ "$$target" = "book" ]; then target="$(BOOK)"; fi; \
+# 位置参数里带空格时，make 会把目标按空格拆开；这里用 wordlist 把它们拼回去。
+# 只有一个目标（就是 book/import 自己）时，退回 $(BOOK)。
+book:  ## 造一本书：make book books/some.epub
+	@target="$(wordlist 2,100,$(MAKECMDGOALS))"; \
+	 if [ -z "$$target" ]; then target="$(BOOK)"; fi; \
 	 $(UV) run python -m lector.build --url $(URL) "$$target"
 
 import:  ## 把已有的 EPUB 送进服务端：make import books/some.epub
-	@target="$(lastword $(MAKECMDGOALS))"; \
-	 if [ "$$target" = "import" ]; then target="$(BOOK)"; fi; \
+	@target="$(wordlist 2,100,$(MAKECMDGOALS))"; \
+	 if [ -z "$$target" ]; then target="$(BOOK)"; fi; \
 	 $(UV) run python -m lector.build --url $(URL) --import-only "$$target"
 
-# 任何 *.epub 目标都能直接生成：make books/some.epub
-%.epub:
-	@$(UV) run python -m lector.build $@
+# 只认 books/ 下的书，免得路径里的空格碎片被当成别的目标去建文件。
+books/%.epub:
+	@$(UV) run python -m lector.build --url $(URL) "$@"
+
+# 兜底：路径被空格拆开的碎片目标在这里安静地过去；
+# 单独敲了一个不存在的目标则给出提示。
+%:
+	@if [ "$(words $(MAKECMDGOALS))" = "1" ]; then \
+	   echo "make: 未知目标 '$@'（make help 看可用目标）"; \
+	 fi
 
 test:  ## 跑测试
 	@$(UV) run pytest -q

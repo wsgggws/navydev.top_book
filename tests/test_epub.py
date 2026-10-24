@@ -137,3 +137,29 @@ def test_percent_encoded_hrefs_resolve():
     assert book.chapters[0].sentence_count == 2
     # The directory entry must point at the chapter that really exists.
     assert book.toc[0].chapter_id == book.chapters[0].id
+
+
+def test_anchors_on_headings_are_kept():
+    """目录的落点常常挂在标题上，不只是 <a>。"""
+    from lector.epub.html import extract_blocks
+
+    blocks = extract_blocks(
+        '<h1 id="epubw_com_id_5">第一章</h1><p>正文</p><span id="s1">行内</span>',
+        "OEBPS",
+    )
+    anchors = [a for block in blocks for a in block.anchors]
+    assert "epubw_com_id_5" in anchors
+    assert "s1" in anchors
+    # 锚点落在它所在的块上。
+    heading = next(b for b in blocks if b.type == "h1")
+    assert "epubw_com_id_5" in heading.anchors
+
+
+def test_dropped_tags_do_not_carry_anchors():
+    """被丢弃的标签不该留下锚点。"""
+    from lector.epub.html import extract_blocks
+
+    blocks = extract_blocks('<svg id="x"><script id="y"/></svg><p>正文</p>', "OEBPS")
+    anchors = [a for block in blocks for a in block.anchors]
+    assert "x" not in anchors
+    assert "y" not in anchors

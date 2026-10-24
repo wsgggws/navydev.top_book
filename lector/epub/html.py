@@ -122,6 +122,14 @@ class _Extractor(HTMLParser):
             self._skip.append(tag)
             return
 
+        # 锚点可能挂在任何元素上：calibre 生成的书常把
+        # <h1 id="epubw_com_id_5"> 当作目录的落点，只认 <a> 会把锚点全丢掉。
+        anchor = attrs_value(attrs, "id")
+        if not anchor and tag == "a":
+            anchor = attrs_value(attrs, "name")
+        if anchor and sanitize.is_allowed_tag(tag):
+            self._record_anchor(anchor)
+
         if tag == "img":
             self._handle_img(attrs)
             return
@@ -133,11 +141,6 @@ class _Extractor(HTMLParser):
             target = self._target()
             if target is not None:
                 target["parts"].append("\n")
-            return
-        if tag == "a":
-            anchor = attrs_value(attrs, "id") or attrs_value(attrs, "name")
-            if anchor:
-                self._record_anchor(anchor)
             return
         if tag in TEXT_BLOCKS:
             self._flush_current()

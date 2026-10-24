@@ -87,8 +87,17 @@ def test_build_from_a_single_file(tmp_path):
 def test_find_source_looks_next_to_the_target(tmp_path):
     (tmp_path / "some.md").write_text("# x\n", "utf-8")
     assert find_source(tmp_path / "some.epub").name == "some.md"
-    with __import__("pytest").raises(BuildError):
-        find_source(tmp_path / "missing.epub")
+    # 没有源时返回 None：文件本身可能已经存在，只等着送进书架。
+    assert find_source(tmp_path / "missing.epub") is None
+
+
+def test_an_existing_book_is_only_imported(tmp_path):
+    """有成品没有源时，make book 不会重建它，只是把它送进书架。"""
+    from lector.build import main
+
+    target = tmp_path / "ready.epub"
+    target.write_bytes(b"not really an epub")
+    assert main([str(target), "--no-import"]) == 0
 
 
 def test_cli_builds_without_importing(tmp_path, capsys):
