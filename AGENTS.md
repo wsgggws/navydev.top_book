@@ -67,8 +67,9 @@ make import books/my.epub   # 把已有的 EPUB 送进服务端
 ```
 
 线上发布由 `.github/workflows/deploy.yml` 完成：先跑两端测试，再通过 SSH 上传
-release，服务器在 `~/deploy/navydev.top_book/releases/<sha>` 解包并执行
-`make docker-run`，最后切换 `current` 软链。生产容器只监听
+release，GitHub Actions 构建并推送镜像到 GHCR，服务器在
+`~/deploy/navydev.top_book/releases/<sha>` 解包并执行
+`make docker-release`，最后切换 `current` 软链。生产容器只监听
 `127.0.0.1:8010`，数据在 Docker 命名卷 `navydev-top-book-data`。
 **不要改回 systemd。**
 

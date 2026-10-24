@@ -10,7 +10,7 @@ BOOK ?= books/book.epub
 URL ?= http://127.0.0.1:8000
 
 .DEFAULT_GOAL := help
-.PHONY: help book import test server terminal dev clean lock reinstall docker-run docker-stop docker-status docker-logs
+.PHONY: help book import test server terminal dev clean lock reinstall docker-build docker-run docker-release docker-stop docker-status docker-logs
 
 help:  ## 显示这份清单
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -58,8 +58,15 @@ lock:  ## 更新依赖锁
 reinstall:  ## 重新装一遍环境
 	@$(UV) sync --reinstall
 
-docker-run:  ## 构建镜像并后台启动生产容器
+docker-build:  ## 本地构建镜像
+	@docker compose build
+
+docker-run:  ## 本地构建并后台启动容器
 	@docker compose up -d --build --remove-orphans
+
+docker-release:  ## 拉取 CI 构建的镜像并启动（服务器使用）
+	@docker compose pull
+	@docker compose up -d --no-build --remove-orphans
 
 docker-stop:  ## 停止生产容器（保留命名卷数据）
 	@docker compose down

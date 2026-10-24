@@ -84,11 +84,12 @@ chmod 600 ~/.ssh/navydev_top_book_deploy
 2. 打包源码、`Dockerfile`、`docker-compose.yml` 和 `Makefile`；
 3. 通过 SCP 上传到 `~/deploy/navydev.top_book-staging-<sha>/`；
 4. 在服务器解包到 `~/deploy/navydev.top_book/releases/<sha>/`；
-5. 写入权限为 600 的 `.env`；
-6. 在 release 目录执行 `make docker-run`；
-7. 轮询 `http://127.0.0.1:8010/book/api/v1/health`；
-8. 健康检查通过后切换 `~/deploy/navydev.top_book/current`；
-9. 失败则用上一个 release 执行 `make docker-run` 回滚。
+5. 在 GitHub runner 构建 `linux/amd64` 镜像并推送到 GHCR；
+6. 服务器登录 GHCR，写入权限为 600 的 `.env`；
+7. 在 release 目录执行 `make docker-release` 拉取并启动镜像；
+8. 轮询 `http://127.0.0.1:8010/book/api/v1/health`；
+9. 健康检查通过后切换 `~/deploy/navydev.top_book/current`；
+10. 失败则用上一个 release 的镜像标签重新启动并回滚。
 
 服务端不需要 uv：依赖在 Docker 构建阶段由镜像内的 uv 按 `uv.lock` 安装。
 
@@ -97,6 +98,7 @@ chmod 600 ~/.ssh/navydev_top_book_deploy
 ```dotenv
 LECTOR_TOKEN=<你的令牌>
 LECTOR_TTS_ENGINE=edge
+LECTOR_IMAGE=ghcr.io/wsgggws/navydev.top_book:<git-sha>
 ```
 
 `LECTOR_DATA_DIR=/data`、监听地址和端口由 `docker-compose.yml` 固定。
@@ -108,7 +110,7 @@ LECTOR_TTS_ENGINE=edge
 ```yaml
 services:
   lector:
-    image: navydev-top-book:latest
+    image: ghcr.io/wsgggws/navydev.top_book:<git-sha>
     container_name: navydev-top-book
     restart: unless-stopped
     ports:
@@ -132,7 +134,7 @@ cd ~/deploy/navydev.top_book/current
 
 make docker-status
 make docker-logs
-make docker-run
+make docker-release
 
 curl -fsS http://127.0.0.1:8010/book/api/v1/health
 readlink -f ~/deploy/navydev.top_book/current
@@ -146,7 +148,7 @@ PREV="$(readlink -f current)"
 ls -1dt releases/*
 
 cd releases/<旧-sha>
-make docker-run
+make docker-release
 ln -sfn "$PWD" ../current.next
 mv -Tf ../current.next ../current
 ```

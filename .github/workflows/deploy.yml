@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  packages: write
 
 concurrency:
   group: deploy-navydev-top-book
@@ -51,7 +52,7 @@ jobs:
         run: uv run pytest -q
 
   deploy:
-    needs: test
+    needs: build-image
     runs-on: ubuntu-latest
     environment: production
 
@@ -88,6 +89,7 @@ jobs:
           {
             printf 'LECTOR_TOKEN=%s\n' "${LECTOR_TOKEN}"
             printf 'LECTOR_TTS_ENGINE=edge\n'
+            printf 'LECTOR_IMAGE=ghcr.io/%s:%s\n' "${GITHUB_REPOSITORY}" "${GITHUB_SHA}"
           } > release/lector.env
 
       - name: Setup SSH agent
@@ -121,6 +123,7 @@ jobs:
             test -s "${STAGING_PATH}/app.tgz"
             test -s "${STAGING_PATH}/lector.env"
             grep -Eq '^LECTOR_TOKEN=.+$' "${STAGING_PATH}/lector.env"
+            grep -Eq '^LECTOR_IMAGE=.+$' "${STAGING_PATH}/lector.env"
 
             command -v docker >/dev/null || {
               echo "服务器未安装 Docker。" >&2
@@ -130,6 +133,9 @@ jobs:
               echo "服务器缺少 Docker Compose v2。" >&2
               exit 1
             }
+            printf '%s' '${{ secrets.GITHUB_TOKEN }}' | \
+              docker login ghcr.io --username '${{ github.actor }}' --password-stdin
+            trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
 
             RELEASE_DIR="${APP_ROOT}/releases/${RELEASE_ID}"
             CURRENT_LINK="${APP_ROOT}/current"
@@ -142,12 +148,12 @@ jobs:
             rollback() {
               if [ -n "${PREVIOUS}" ] && [ -d "${PREVIOUS}" ]; then
                 echo "回滚到 ${PREVIOUS}" >&2
-                (cd "${PREVIOUS}" && make docker-run)
+                (cd "${PREVIOUS}" && make docker-release)
               fi
             }
 
             # 先启动新容器；构建或启动失败时旧容器仍在，仍执行一次显式回滚。
-            if ! (cd "${RELEASE_DIR}" && make docker-run); then
+            if ! (cd "${RELEASE_DIR}" && make docker-release); then
               rollback
               exit 1
             fi
@@ -175,3 +181,33 @@ jobs:
             ls -1dt "${APP_ROOT}"/releases/* 2>/dev/null | tail -n +6 | xargs -r rm -rf
             rm -rf "${STAGING_PATH}"
           EOF
+
+  build-image:
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:${{ github.sha }}
+            ghcr.io/${{ github.repository }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
