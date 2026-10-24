@@ -263,6 +263,24 @@ def test_the_app_can_live_under_a_path(tmp_path, epub2_bytes: bytes):
     assert created["url"].startswith("/ebook/s/")
 
 
+def test_library_shell_exposes_search_and_pagination(client):
+    """书架静态资源包含模糊搜索、支持邮箱与每页 12 本的入口。"""
+    page = client.get("/")
+    assert page.status_code == 200
+    assert 'id="library-search-input"' in page.text
+    assert 'id="library-pagination"' in page.text
+    assert "navydev.top@gmail.com" in page.text
+
+    library_js = client.get("/js/views/library.js")
+    assert library_js.status_code == 200
+    assert "const PAGE_SIZE = 12;" in library_js.text
+    assert "function fuzzyTitleMatch(title, query)" in library_js.text
+
+    library_css = client.get("/styles/library.css")
+    assert library_css.status_code == 200
+    assert "grid-template-columns: repeat(6, minmax(0, 1fr));" in library_css.text
+
+
 def test_repository_books_are_imported_and_public(tmp_path, epub2_bytes: bytes):
     """Books committed under books/ appear without upload or a token."""
     from fastapi.testclient import TestClient

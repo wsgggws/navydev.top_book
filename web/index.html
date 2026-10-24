@@ -44,20 +44,34 @@
   <section class="library" id="library" aria-label="书架">
     <div class="library-head">
       <div class="library-heading">
-        <h1>书架</h1>
-        <p class="library-tagline">戴上耳朵读：声音读到哪里，文字就亮到哪里。</p>
+        <div class="library-title-row">
+          <h1>书架</h1>
+          <p class="library-tagline">戴上耳朵读：声音读到哪里，文字就亮到哪里。</p>
+        </div>
         <div class="library-features" aria-label="书架特色">
           <span>有声朗读</span>
           <span>逐词高亮</span>
           <span>本机续读</span>
         </div>
+        <label class="library-search" for="library-search-input">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M12.5 12.5L17 17"/></svg>
+          <input
+            type="search"
+            id="library-search-input"
+            placeholder="搜索书名"
+            autocomplete="off"
+            aria-label="模糊搜索书名"
+          >
+        </label>
       </div>
     </div>
     <div class="library-grid" id="library-grid">
       <div class="book-sections" id="book-grid"></div>
       <div class="empty" id="library-empty" hidden>
-        <p class="empty-title">书架暂时没有书</p>
+        <p class="empty-title" id="library-empty-title">书架暂时没有书</p>
+        <p class="empty-hint">可发送邮箱到 <a href="mailto:navydev.top@gmail.com">navydev.top@gmail.com</a> 进行支持。</p>
       </div>
+      <nav class="library-pagination" id="library-pagination" aria-label="书架分页" hidden></nav>
     </div>
   </section>
 
