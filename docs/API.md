@@ -206,6 +206,7 @@ uv run lector
   "default_voice": "zh-CN-YunxiNeural",
   "featured_voices": ["zh-CN-YunxiNeural", "en-US-GuyNeural"],
   "default_voices": { "zh": "zh-CN-YunxiNeural", "en": "en-US-GuyNeural" },
+  "default_rates": { "zh": "+0%", "en": "-8%" },
   "scope": "admin"
 }
 ```
@@ -214,6 +215,8 @@ uv run lector
 
 - `featured_voices` 是**界面上应当提供的常用音色**：中文（zh-CN）、美式（en-US）、英式（en-GB）各若干。引擎本身还有三百多个音色，`/tts/voices` 全部返回，客户端按需自选。
 - `default_voices` 是**按语言分的默认音色**：中文书用中文男声，英文书用美式男声。客户端不要自己猜，按这份表来。
+- `default_rates` 是 TTS 基础语速：中文 `+0%`，英文 `-8%`。界面上的 1.0×
+  指各自的基础语速；0.75×–2.0× 再叠加在基础语速之上。
 
 ### `GET /api/v1/tts/voices`
 

@@ -8,6 +8,7 @@ def test_meta_lists_the_featured_voices(client):
         "zh": "zh-CN-YunxiNeural",
         "en": "en-US-GuyNeural",
     }
+    assert payload["default_rates"] == {"zh": "+0%", "en": "-8%"}
     featured = payload["featured_voices"]
     assert 5 <= len(featured) <= 20
     assert any(v.startswith("en-US") for v in featured)

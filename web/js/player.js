@@ -62,7 +62,11 @@ export class Player {
   /** The voice and rate the tiles are synthesised with. */
   get voiceId() { return state.settings.voiceId || ''; }
 
-  get rateParam() { return '+0%'; }
+  get rateParam() {
+    const family = (state.book?.language || '').split('-')[0].toLowerCase();
+    return (state.defaultRates && state.defaultRates[family])
+      || (family === 'en' ? '-8%' : '+0%');
+  }
 
   /**
    * The cache key of a tile.

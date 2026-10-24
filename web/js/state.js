@@ -83,6 +83,7 @@ export const state = new (class Store extends Emitter {
     this.defaultVoice = '';
     this.featuredVoices = [];
     this.defaultVoices = {};
+    this.defaultRates = {};
   }
 
   saveSettings() {

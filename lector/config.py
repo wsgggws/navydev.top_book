@@ -40,6 +40,12 @@ DEFAULT_VOICE_BY_LOCALE = {
     "en": "en-US-GuyNeural",
 }
 
+#: 英语 TTS 的基础语速略慢于中文；客户端的倍速仍在此基础上叠加。
+DEFAULT_RATE_BY_LOCALE = {
+    "zh": "+0%",
+    "en": "-8%",
+}
+
 #: The voices the interface offers.  The engine knows three hundred of them;
 #: a reader wants a handful of familiar ones in their own language.
 FEATURED_VOICES = (

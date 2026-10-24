@@ -30,6 +30,20 @@ def test_audio_is_cached(client, epub2_bytes: bytes, engine):
     assert len(engine.calls) == calls_after_first
 
 
+def test_english_uses_a_slightly_slower_baseline(client, engine):
+    """English 1x is slower than Chinese 1x without changing the UI rate."""
+    from tests.factories import build_epub2
+
+    data = build_epub2(language="en-US")
+    book_id = upload(client, data).json()["book"]["book_id"]
+    chapter = client.get(f"/api/v1/books/{book_id}/chapters/c0").json()["chapter"]
+    sentence_id = chapter["blocks"][1]["sentences"][0]["id"]
+
+    response = client.get(f"/api/v1/books/{book_id}/audio/{sentence_id}.mp3")
+    assert response.status_code == 200
+    assert engine.calls[-1][2] == "-8%"
+
+
 def test_words_expose_granularity(client, epub2_bytes: bytes):
     book_id, sentence_id = setup(client, epub2_bytes)
     response = client.get(f"/api/v1/books/{book_id}/audio/{sentence_id}.words")

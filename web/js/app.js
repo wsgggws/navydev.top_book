@@ -1002,6 +1002,7 @@ async function start() {
     state.defaultVoice = meta.default_voice || '';
     state.featuredVoices = meta.featured_voices || [];
     state.defaultVoices = meta.default_voices || {};
+    state.defaultRates = meta.default_rates || {};
   } catch (error) {
     state.defaultVoice = '';
   }

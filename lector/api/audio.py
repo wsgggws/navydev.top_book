@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 
 from lector.api.deps import AppContext, get_context, public_read, require_admin
 from lector.api.errors import ApiError
+from lector.config import DEFAULT_RATE_BY_LOCALE
 from lector.models import WarmRequest, WarmResponse, WordsResponse
 from lector.tts.base import TTSError, TTSTimeout, TTSUnavailable
 
@@ -28,6 +29,13 @@ async def _voice_for(ctx: AppContext, book_id: str, voice_id: str | None) -> str
     return await ctx.audio.choose_voice(book.language if book else None, preferred)
 
 
+def _default_rate(language: str | None) -> str:
+    """The baseline TTS rate for a book language."""
+    if not language:
+        return "+0%"
+    return DEFAULT_RATE_BY_LOCALE.get(language.split("-")[0].lower(), "+0%")
+
+
 def require_book(ctx: AppContext, book_id: str):
     book = ctx.store.get_book(book_id)
     if book is None:
@@ -46,9 +54,9 @@ async def get_audio(
 ) -> Response:
     """The MP3 of one sentence.  The first request synthesises it."""
     ctx = get_context(request)
-    require_book(ctx, book_id)
+    book = require_book(ctx, book_id)
     voice = await _voice_for(ctx, book_id, voice_id)
-    rate = rate or "+0%"
+    rate = rate or _default_rate(book.language)
     try:
         tile = await ctx.audio.tile(book_id, sentence_id, voice, rate)
     except TTSTimeout as exc:
@@ -82,9 +90,9 @@ async def get_words(
 ) -> WordsResponse:
     """The word boundaries of one sentence — the data behind the highlight."""
     ctx = get_context(request)
-    require_book(ctx, book_id)
+    book = require_book(ctx, book_id)
     voice = await _voice_for(ctx, book_id, voice_id)
-    rate = rate or "+0%"
+    rate = rate or _default_rate(book.language)
     try:
         tile = await ctx.audio.tile(book_id, sentence_id, voice, rate)
     except TTSTimeout as exc:
@@ -119,7 +127,7 @@ async def warm_audio(
         "SELECT voice_id, language FROM books WHERE book_id = ?", (book_id,)
     )
     voice = await ctx.audio.choose_voice(row["language"], payload.voice_id or row["voice_id"])
-    rate = payload.rate or "+0%"
+    rate = payload.rate or _default_rate(row["language"])
     with ctx.store.db.write() as conn:
         conn.execute(
             "UPDATE books SET voice_id = ?, updated_at = updated_at WHERE book_id = ?",

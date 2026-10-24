@@ -24,6 +24,7 @@ from lector.api.deps import AppContext, RateLimiter, parse_token, public_read
 from lector.api.errors import ApiError
 from lector.config import (
     APP_VERSION,
+    DEFAULT_RATE_BY_LOCALE,
     DEFAULT_VOICE_BY_LOCALE,
     FEATURED_VOICES,
     PARSER_VERSION,
@@ -158,6 +159,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "default_voice": settings.default_voice,
             "featured_voices": list(FEATURED_VOICES),
             "default_voices": dict(DEFAULT_VOICE_BY_LOCALE),
+            "default_rates": dict(DEFAULT_RATE_BY_LOCALE),
             "scope": parse_token(settings.token).scope,
         }
 
