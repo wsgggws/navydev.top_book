@@ -1,102 +1,182 @@
 # 部署上线
 
-`navydev.top_book`（应用名仍是 Lector）是一个 Python 进程 + SQLite + 数据目录，
-线上挂在 `https://navydev.top/book/`。仓库提供两条部署路径：
+`navydev.top_book`（应用名仍是 Lector）线上挂在
+`https://navydev.top/book/`。生产环境使用 Docker Compose，不使用 systemd。
 
-- 本地开发：`uv run lector-server`，默认 `127.0.0.1:8000`。
-- 线上生产：GitHub Actions 测试后发布到 `/opt/navydev.top_book`，systemd 以
-  `127.0.0.1:8010` 运行，中央 nginx 把 `/book/` 原样代理过去。
+- 本地开发：`uv run lector-server`，默认 `127.0.0.1:8000`
+- 线上生产：容器只监听宿主机 `127.0.0.1:8010`，由中央 nginx 转发 `/book/`
+- 持久数据：Docker 命名卷 `navydev-top-book-data`
 
-## 1. 本地环境
+## 1. 服务器准备
 
-```bash
-uv sync
-uv run lector-server
+服务器需要：
+
+- Docker Engine
+- Docker Compose v2（`docker compose version` 必须可用）
+- SSH 用户可以执行 Docker，不需要 root 登录或 systemd
+- 已由 `nginx-config` 配好 `navydev.top` 证书与 `/book/` 反向代理
+
+服务器**不需要**单独安装 Python、uv，也不需要创建系统用户。
+
+## 2. GitHub Actions Secrets
+
+在 GitHub 仓库的 `Settings → Secrets and variables → Actions` 添加：
+
+| Secret | 内容 |
+| --- | --- |
+| `REMOTE_IP` | 服务器 IP 或域名 |
+| `SSH_USER` | 部署用的 SSH 用户 |
+| `SSH_PRIVATE_KEY` | 该用户对应私钥文件的**完整内容** |
+| `LECTOR_TOKEN` | 服务端访问令牌，建议 `<随机值>:admin` |
+
+`SSH_PRIVATE_KEY` 不是 `.pub` 公钥。要复制私钥文件的完整内容，包括：
+
+```text
+-----BEGIN OPENSSH PRIVATE KEY-----
+...
+-----END OPENSSH PRIVATE KEY-----
 ```
 
-浏览器打开 <http://127.0.0.1:8000/>。生产配置由
-`/etc/lector/env` 提供，不写进仓库。
-
-## 2. 数据目录
-
-| 路径 | 内容 | 要不要备份 |
-| --- | --- | --- |
-| `/var/lib/lector/lector.db` | SQLite：书、进度接口数据、搜索索引、短码 | **要** |
-| `/var/lib/lector/books/<id>/` | 原始 EPUB 与解析后的章节 | 可以从 EPUB 重来 |
-| `/var/lib/lector/audio/` | 句级音频缓存 | 不用，丢失后会重新合成 |
-
-备份：
+推荐单独创建一把无口令部署密钥：
 
 ```bash
-sudo sqlite3 /var/lib/lector/lector.db \
-  ".backup '/backup/lector-$(date +%F).db'"
+ssh-keygen -t ed25519 \
+  -C "github-actions@navydev.top_book" \
+  -f ~/.ssh/navydev_top_book_deploy \
+  -N ""
+
+ssh-copy-id -i ~/.ssh/navydev_top_book_deploy.pub user@server
+
+gh secret set SSH_PRIVATE_KEY < ~/.ssh/navydev_top_book_deploy
+gh secret set REMOTE_IP --body "server-ip"
+gh secret set SSH_USER --body "user"
+gh secret set LECTOR_TOKEN --body "随机令牌:admin"
+```
+
+私钥文件权限应为 600：
+
+```bash
+chmod 600 ~/.ssh/navydev_top_book_deploy
 ```
 
 ## 3. GitHub Actions CI
 
-`.github/workflows/ci.yml` 在每次 push 到 `main` 和 Pull Request 时运行：
+`.github/workflows/ci.yml` 在 push 到 `main` 和 Pull Request 时运行：
 
 1. 固定 Python 3.12；
 2. `pip install uv`；
 3. 根项目 `uv sync --frozen` 并运行服务端测试；
 4. `terminal/` 独立 `uv sync --frozen` 并运行终端测试。
 
-两个项目仍是独立的 `pyproject.toml` / `uv.lock`，CI 不会把终端代码装进服务端
-运行时。
+两个项目仍然各有自己的 `pyproject.toml` 与 `uv.lock`。
 
 ## 4. GitHub Actions CD
 
-`.github/workflows/deploy.yml` 在 push 到 `main`、推送 `v*.*.*` tag，或手工触发
-时发布。发布前先在同一个 workflow 里重跑两端测试。
+`.github/workflows/deploy.yml` 在以下情况发布：
 
-仓库需要配置这些 Actions secrets：
+- push 到 `main`
+- push `v*.*.*` tag
+- 手动 `workflow_dispatch`
 
-| Secret | 用途 |
-| --- | --- |
-| `REMOTE_IP` | 服务器地址 |
-| `SSH_USER` | SSH 用户 |
-| `SSH_PRIVATE_KEY` | 对应私钥 |
-| `LECTOR_TOKEN` | 服务端访问令牌，建议形如 `<随机值>:admin` |
+发布流程：
 
-服务器首次部署前需要满足：
+1. 在 GitHub runner 重跑服务端与终端测试；
+2. 打包源码、`Dockerfile`、`docker-compose.yml` 和 `Makefile`；
+3. 通过 SCP 上传到 `~/deploy/navydev.top_book-staging-<sha>/`；
+4. 在服务器解包到 `~/deploy/navydev.top_book/releases/<sha>/`；
+5. 写入权限为 600 的 `.env`；
+6. 在 release 目录执行 `make docker-run`；
+7. 轮询 `http://127.0.0.1:8010/book/api/v1/health`；
+8. 健康检查通过后切换 `~/deploy/navydev.top_book/current`；
+9. 失败则用上一个 release 执行 `make docker-run` 回滚。
 
-- 已安装 `uv`，且 SSH 用户执行 `command -v uv` 能找到它；
-- SSH 用户可以使用 `sudo`；
-- 已由 nginx-config 配好 `navydev.top` 的证书和 `/book/` 路由；
-- 如果已有 `/var/lib/lector`，保留它，发布不会清空数据。
+服务端不需要 uv：依赖在 Docker 构建阶段由镜像内的 uv 按 `uv.lock` 安装。
 
-发布过程：
-
-1. 把 `pyproject.toml`、`uv.lock`、`lector/`、`web/` 与 systemd unit 打包；
-2. 上传到 `/tmp/navydev.top_book-<sha>/`；
-3. 在服务器解包到 `/opt/navydev.top_book/releases/<sha>/`；
-4. 在该 release 内执行 `uv sync --frozen --no-dev`；
-5. 原子切换 `/opt/navydev.top_book/current`，重启 `lector.service`；
-6. 轮询 `/book/api/v1/health`，失败则切回上一个 release。
-
-systemd 固定配置：
-
-```ini
-WorkingDirectory=/opt/navydev.top_book/current
-EnvironmentFile=-/etc/lector/env
-ExecStart=/opt/navydev.top_book/current/.venv/bin/lector-server
-```
-
-`/etc/lector/env` 由 workflow 以 600 权限写入：
+`.env` 内容只有运行时配置，例如：
 
 ```dotenv
 LECTOR_TOKEN=<你的令牌>
-LECTOR_DATA_DIR=/var/lib/lector
-LECTOR_HOST=127.0.0.1
-LECTOR_PORT=8010
-LECTOR_BASE_PATH=/book
 LECTOR_TTS_ENGINE=edge
 ```
 
-## 5. nginx
+`LECTOR_DATA_DIR=/data`、监听地址和端口由 `docker-compose.yml` 固定。
+
+## 5. Docker Compose
+
+生产服务定义：
+
+```yaml
+services:
+  lector:
+    image: navydev-top-book:latest
+    container_name: navydev-top-book
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8010:8010"
+    volumes:
+      - lector_data:/data
+```
+
+固定命名卷：
+
+```text
+navydev-top-book-data
+```
+
+`make docker-stop` 只停止容器，不会删除这个卷。
+
+## 6. 常用运维
+
+```bash
+cd ~/deploy/navydev.top_book/current
+
+make docker-status
+make docker-logs
+make docker-run
+
+curl -fsS http://127.0.0.1:8010/book/api/v1/health
+readlink -f ~/deploy/navydev.top_book/current
+```
+
+回滚到上一个 release：
+
+```bash
+cd ~/deploy/navydev.top_book
+PREV="$(readlink -f current)"
+ls -1dt releases/*
+
+cd releases/<旧-sha>
+make docker-run
+ln -sfn "$PWD" ../current.next
+mv -Tf ../current.next ../current
+```
+
+## 7. 数据备份
+
+数据库、EPUB 和音频缓存都在命名卷里。在线备份：
+
+```bash
+mkdir -p ~/backups
+docker run --rm \
+  -v navydev-top-book-data:/data:ro \
+  -v "$HOME/backups:/backup" \
+  alpine \
+  tar -czf "/backup/lector-$(date +%F).tgz" -C /data .
+```
+
+恢复前先停止容器：
+
+```bash
+cd ~/deploy/navydev.top_book/current
+make docker-stop
+```
+
+不要把命名卷当作临时缓存：`lector.db`、书库和音频缓存都在里面。
+
+## 8. nginx
 
 站点配置的唯一事实来源是同级仓库 `../nginx-config` 的
-`config/nginx/conf.d/navydev-top.conf`。关键配置：
+`config/nginx/conf.d/navydev-top.conf`：
 
 ```nginx
 upstream lector_app {
@@ -114,7 +194,7 @@ location /book/ {
 HTTP/2 使用 nginx 1.18 支持的 `listen 443 ssl http2;`。音频与上传接口有单独的
 较长超时；静态 CSS/JS 在 nginx 层缓存。
 
-## 6. 终端连接线上服务
+## 9. 终端连接线上服务
 
 终端只读，不提供上传、删除或缓存管理入口：
 
@@ -126,52 +206,13 @@ LECTOR_TOKEN=你的令牌 \
 uv run lector
 ```
 
-也可以启动后按 `c` 填地址和令牌，配置保存在
-`~/.config/lector/reader.json`（权限 600）。终端自己的阅读位置保存在
-`~/.config/lector/progress.json`，与网页端 `localStorage` 完全独立。
+终端自己的阅读位置保存在 `~/.config/lector/progress.json`，与网页端
+`localStorage` 完全独立。
 
-## 7. 权限分级
+## 10. 注意事项
 
-| 服务端配置 | 客户端发送 | 能力 |
-| --- | --- | --- |
-| `<token>` / `<token>:admin` | `<token>` | 读、上传、删除、预热音频、清缓存 |
-| `<token>:reader` | `<token>` | 读；不能上传、删除或管理音频缓存 |
-
-权限后缀只写在服务器 `/etc/lector/env` 中，客户端只发送密钥本身。
-
-## 8. 手动运维
-
-```bash
-# 查看状态与日志
-sudo systemctl status lector
-sudo journalctl -u lector -f
-
-# 查看当前 release 和可用版本
-readlink -f /opt/navydev.top_book/current
-ls -1dt /opt/navydev.top_book/releases/*
-
-# 健康检查
-curl -fsS http://127.0.0.1:8010/book/api/v1/health
-
-# nginx 配置变更后
-sudo nginx -t && sudo systemctl reload nginx
-```
-
-回滚只需把 `current` 指回上一个 release 并重启服务：
-
-```bash
-sudo ln -sfn /opt/navydev.top_book/releases/<旧-sha> \
-  /opt/navydev.top_book/current.next
-sudo mv -Tf /opt/navydev.top_book/current.next /opt/navydev.top_book/current
-sudo systemctl restart lector
-```
-
-## 9. 注意事项
-
-- **不要删除 `/var/lib/lector`**，书库、音频缓存和进度数据都在这里。
 - `LECTOR_TOKEN` 必须配置；否则反向代理会公开一个无鉴权实例。
 - 上传上限 50MB，nginx 的 `client_max_body_size` 要留出余量。
 - 音频 URL 的内容由文本、音色、倍速与引擎版本共同决定，可长期缓存。
 - 换音色后不必手工删旧文件；缓存键变了，旧缓存只是不再命中。
-- 音频第一次可能现场合成；nginx `/book/api/v1/books/.../audio/` 的超时已放宽到
-  120 秒，客户端也会提前预热下一小段。
+- 不要使用 `docker compose down -v`，`-v` 会删除 `navydev-top-book-data`。

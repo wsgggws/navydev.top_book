@@ -10,7 +10,7 @@ BOOK ?= books/book.epub
 URL ?= http://127.0.0.1:8000
 
 .DEFAULT_GOAL := help
-.PHONY: help book import test server terminal dev clean lock reinstall
+.PHONY: help book import test server terminal dev clean lock reinstall docker-run docker-stop docker-status docker-logs
 
 help:  ## 显示这份清单
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -57,6 +57,18 @@ lock:  ## 更新依赖锁
 
 reinstall:  ## 重新装一遍环境
 	@$(UV) sync --reinstall
+
+docker-run:  ## 构建镜像并后台启动生产容器
+	@docker compose up -d --build --remove-orphans
+
+docker-stop:  ## 停止生产容器（保留命名卷数据）
+	@docker compose down
+
+docker-status:  ## 查看生产容器状态
+	@docker compose ps
+
+docker-logs:  ## 持续查看生产容器日志
+	@docker compose logs -f --tail=200
 
 clean:  ## 清掉运行数据（书与音频缓存都在 data/ 里）
 	@find data -mindepth 1 -delete 2>/dev/null || true

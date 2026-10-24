@@ -16,8 +16,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  APP_ROOT: /opt/navydev.top_book
-  STAGING_PATH: /tmp/navydev.top_book-${{ github.sha }}
+  APP_ROOT: deploy/navydev.top_book
+  STAGING_PATH: deploy/navydev.top_book-staging-${{ github.sha }}
   HEALTH_URL: http://127.0.0.1:8010/book/api/v1/health
 
 jobs:
@@ -74,15 +74,19 @@ jobs:
             --exclude='__pycache__' \
             --exclude='*.pyc' \
             -czf release/app.tgz \
-            pyproject.toml uv.lock README.md lector web deploy/lector.service
+            .dockerignore \
+            Dockerfile \
+            docker-compose.yml \
+            Makefile \
+            pyproject.toml \
+            uv.lock \
+            README.md \
+            lector \
+            web
 
           umask 077
           {
             printf 'LECTOR_TOKEN=%s\n' "${LECTOR_TOKEN}"
-            printf 'LECTOR_DATA_DIR=/var/lib/lector\n'
-            printf 'LECTOR_HOST=127.0.0.1\n'
-            printf 'LECTOR_PORT=8010\n'
-            printf 'LECTOR_BASE_PATH=/book\n'
             printf 'LECTOR_TTS_ENGINE=edge\n'
           } > release/lector.env
 
@@ -112,18 +116,18 @@ jobs:
             "APP_ROOT='${APP_ROOT}' STAGING_PATH='${STAGING_PATH}' RELEASE_ID='${GITHUB_SHA}' HEALTH_URL='${HEALTH_URL}' bash -s" <<'EOF'
             set -euo pipefail
 
-            SUDO=""
-            if [ "$(id -u)" -ne 0 ]; then
-              SUDO="sudo"
-            fi
-
+            APP_ROOT="${HOME}/${APP_ROOT}"
+            STAGING_PATH="${HOME}/${STAGING_PATH}"
             test -s "${STAGING_PATH}/app.tgz"
             test -s "${STAGING_PATH}/lector.env"
             grep -Eq '^LECTOR_TOKEN=.+$' "${STAGING_PATH}/lector.env"
 
-            UV_BIN="$(command -v uv)"
-            test -n "${UV_BIN}" || {
-              echo "服务器未安装 uv；请先安装后再发布。" >&2
+            command -v docker >/dev/null || {
+              echo "服务器未安装 Docker。" >&2
+              exit 1
+            }
+            docker compose version >/dev/null || {
+              echo "服务器缺少 Docker Compose v2。" >&2
               exit 1
             }
 
@@ -131,29 +135,22 @@ jobs:
             CURRENT_LINK="${APP_ROOT}/current"
             PREVIOUS="$(readlink -f "${CURRENT_LINK}" 2>/dev/null || true)"
 
-            ${SUDO} mkdir -p "${RELEASE_DIR}" "${APP_ROOT}/releases"
-            ${SUDO} tar -xzf "${STAGING_PATH}/app.tgz" -C "${RELEASE_DIR}"
-            ${SUDO} chown -R root:root "${RELEASE_DIR}"
+            mkdir -p "${RELEASE_DIR}" "${APP_ROOT}/releases"
+            tar -xzf "${STAGING_PATH}/app.tgz" -C "${RELEASE_DIR}"
+            install -m 0600 "${STAGING_PATH}/lector.env" "${RELEASE_DIR}/.env"
 
-            # 依赖装在 release 自己的 .venv 里；旧版本因此可以原样回滚。
-            ${SUDO} env UV_CACHE_DIR=/var/cache/uv UV_PYTHON=3.12 \
-              "${UV_BIN}" sync --frozen --no-dev --project "${RELEASE_DIR}"
+            rollback() {
+              if [ -n "${PREVIOUS}" ] && [ -d "${PREVIOUS}" ]; then
+                echo "回滚到 ${PREVIOUS}" >&2
+                (cd "${PREVIOUS}" && make docker-run)
+              fi
+            }
 
-            if ! id lector >/dev/null 2>&1; then
-              ${SUDO} useradd --system --home "${APP_ROOT}" --shell /usr/sbin/nologin lector
+            # 先启动新容器；构建或启动失败时旧容器仍在，仍执行一次显式回滚。
+            if ! (cd "${RELEASE_DIR}" && make docker-run); then
+              rollback
+              exit 1
             fi
-            ${SUDO} install -d -o lector -g lector -m 0750 /var/lib/lector
-            ${SUDO} install -d -m 0700 /etc/lector
-            ${SUDO} install -m 0600 -o root -g root \
-              "${STAGING_PATH}/lector.env" /etc/lector/env
-            ${SUDO} install -m 0644 \
-              "${RELEASE_DIR}/deploy/lector.service" /etc/systemd/system/lector.service
-
-            ${SUDO} ln -sfn "${RELEASE_DIR}" "${CURRENT_LINK}.next"
-            ${SUDO} mv -Tf "${CURRENT_LINK}.next" "${CURRENT_LINK}"
-            ${SUDO} systemctl daemon-reload
-            ${SUDO} systemctl enable lector
-            ${SUDO} systemctl restart lector
 
             healthy=0
             for _ in $(seq 1 30); do
@@ -166,15 +163,15 @@ jobs:
 
             if [ "${healthy}" -ne 1 ]; then
               echo "健康检查失败，回滚到上一个 release。" >&2
-              if [ -n "${PREVIOUS}" ]; then
-                ${SUDO} ln -sfn "${PREVIOUS}" "${CURRENT_LINK}.next"
-                ${SUDO} mv -Tf "${CURRENT_LINK}.next" "${CURRENT_LINK}"
-                ${SUDO} systemctl restart lector || true
-              fi
+              docker logs --tail=200 navydev-top-book || true
+              rollback
               exit 1
             fi
 
+            ln -sfn "${RELEASE_DIR}" "${CURRENT_LINK}.next"
+            mv -Tf "${CURRENT_LINK}.next" "${CURRENT_LINK}"
+
             # 保留五个版本，方便排查和手工回滚。
-            ${SUDO} sh -c "ls -1dt '${APP_ROOT}'/releases/* 2>/dev/null | tail -n +6 | xargs -r rm -rf"
+            ls -1dt "${APP_ROOT}"/releases/* 2>/dev/null | tail -n +6 | xargs -r rm -rf
             rm -rf "${STAGING_PATH}"
           EOF

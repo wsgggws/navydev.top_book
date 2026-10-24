@@ -66,9 +66,11 @@ make book books/my.epub     # 造一本书（或把已有的 EPUB 收进书架�
 make import books/my.epub   # 把已有的 EPUB 送进服务端
 ```
 
-线上发布由 `.github/workflows/deploy.yml` 完成：先跑两端测试，再上传 release，
-服务器解包到 `/opt/navydev.top_book/releases/<sha>`，切换 `current` 软链并重启
-`lector.service`。生产端口固定 `8010`，`LECTOR_BASE_PATH=/book`。
+线上发布由 `.github/workflows/deploy.yml` 完成：先跑两端测试，再通过 SSH 上传
+release，服务器在 `~/deploy/navydev.top_book/releases/<sha>` 解包并执行
+`make docker-run`，最后切换 `current` 软链。生产容器只监听
+`127.0.0.1:8010`，数据在 Docker 命名卷 `navydev-top-book-data`。
+**不要改回 systemd。**
 
 - 每个项目各有自己的 `pyproject.toml` 与 `uv.lock`，都是该项目的依赖事实来源，都要提交。
 - `requirements.txt` 是由 `uv export --format requirements-txt --no-hashes --no-emit-project --output-file requirements.txt` 生成的产物，**不要手工编辑**。只在需要 pip 环境时用它。

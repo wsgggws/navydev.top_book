@@ -145,17 +145,16 @@ make book BOOK="books/某本书 (作者).epub"  # 路径带空格时用这种写
 
 ## 部署上线
 
-见 **[docs/DEPLOY.md](docs/DEPLOY.md)**：GitHub Actions 测试与原子发布、
-uv 装依赖、systemd 跑进程、中央 nginx 管 `/book` 路径与 TLS。
-`deploy/` 里有现成的 systemd 与环境变量配置。
+见 **[docs/DEPLOY.md](docs/DEPLOY.md)**：GitHub Actions 测试后通过 SSH 发布，
+服务器用 Docker Compose 运行容器，中央 nginx 管 `/book` 路径与 TLS。
+数据保存在固定 Docker 命名卷里，不依赖 systemd。
 
 一句话版本：
 
 ```bash
-export LECTOR_TOKEN="$(openssl rand -hex 24)"
-export LECTOR_DATA_DIR=/var/lib/lector
-export LECTOR_HOST=127.0.0.1
-uv run lector-server
+cp deploy/env.example .env
+# 编辑 .env，把 LECTOR_TOKEN 换成随机令牌
+make docker-run
 ```
 
 **令牌是必须的**：不设 `LECTOR_TOKEN` 时服务端只监听回环地址。令牌还能分级：
@@ -188,6 +187,8 @@ tests/           服务端的 pytest
 terminal/         终端端项目：自己的 pyproject.toml / uv.lock / Textual
 docs/            契约（API 与界面）
 deploy/          部署用的现成配置
+Dockerfile       生产镜像
+docker-compose.yml 容器、端口、数据卷与健康检查
 .github/         CI 与原子发布 workflow
 data/            运行时数据（git 忽略）
 ```
