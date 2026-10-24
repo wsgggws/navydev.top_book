@@ -179,6 +179,7 @@ class BaseReaderScreen(Screen):
         self.sentences: list[dict] = []
         self.sentence_index = 0
         self.cursor: dict | None = None
+        self._push_timer = None
 
     # -- layout ----------------------------------------------------------
     def compose(self) -> ComposeResult:
@@ -281,6 +282,7 @@ class BaseReaderScreen(Screen):
         if scroll:
             self.scroll_to_cursor()
         self.update_status()
+        self.schedule_push()
 
     def scroll_to_cursor(self) -> None:
         """Keep the current sentence visible."""
@@ -343,7 +345,17 @@ class BaseReaderScreen(Screen):
     def action_back(self) -> None:
         self.app.pop_screen()
 
-    def action_push_progress(self) -> None:
+    def schedule_push(self) -> None:
+        """Push the position once the reader stops moving.
+
+        The web end reads the same progress, so this is what keeps the two
+        ends in step without anyone pressing a key.
+        """
+        if self._push_timer is not None:
+            self._push_timer.stop()
+        self._push_timer = self.set_timer(1.2, self.push_progress_now)
+
+    def push_progress_now(self, quiet: bool = True) -> None:
         """Send the position to the server."""
         if not self.cursor:
             return
@@ -354,9 +366,14 @@ class BaseReaderScreen(Screen):
                 self.cursor["sentence_id"],
                 self.cursor.get("word_index"),
             )
-            self.notify("进度已同步", title="进度")
+            if not quiet:
+                self.notify("进度已同步", title="进度")
         except Exception as exc:  # noqa: BLE001
             self.notify(f"同步失败：{exc}", title="错误", severity="error")
+
+    def action_push_progress(self) -> None:
+        """Send the position to the server."""
+        self.push_progress_now(quiet=False)
 
     def action_pull_progress(self) -> None:
         """Take the position from the server."""

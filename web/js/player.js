@@ -104,10 +104,29 @@ export class Player {
       }
       await this.audio.play();
       if (this.onSentence) this.onSentence(sentenceId, this.words, this.granularity);
+      this.prefetchNext();
     } catch (error) {
       this._setPlaying(false);
       if (this.onError) this.onError(error.message || '播放失败', error.code);
     }
+  }
+
+  /**
+   * Fetch the next sentence while this one is still playing.
+   *
+   * The handover between two tiles has to be inaudible, and the first request
+   * for a tile may have to synthesise it — which takes seconds.  Fetching one
+   * sentence ahead removes both problems.
+   */
+  prefetchNext() {
+    const sentences = state.sentences();
+    const index = sentences.findIndex((sentence) => sentence.id === this.sentenceId);
+    const next = sentences[index + 1];
+    if (!next) return;
+    Promise.all([
+      this._fetchAudio(next.id).catch(() => null),
+      this._fetchWords(next.id).catch(() => null),
+    ]);
   }
 
   /** Move the play head inside the current sentence. */

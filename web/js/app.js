@@ -366,9 +366,45 @@ const writeProgress = debounce(async () => {
   }
 }, 600);
 
+/* 跨端接力：网页与终端读写同一份进度。
+ * 终端停下 1.2 秒就推一次，网页每 5 秒拉一次；谁先动谁说了算，
+ * 另一端在没有本地操作时跟随过去。 */
+let lastLocalMove = 0;
+
+const pullRemoteProgress = setInterval(async () => {
+  if (!state.book || !state.chapter) return;
+  if (document.hidden) return;
+  if (!dom.body.classList.contains('view-reader')) return;
+  if (Date.now() - lastLocalMove < 3000) return;
+  let progress;
+  try {
+    progress = await api.getProgress(state.book.book_id);
+  } catch (error) {
+    return;
+  }
+  const remote = progress && progress.cursor;
+  if (!remote) return;
+  if (state.cursor
+      && remote.chapter_id === state.cursor.chapter_id
+      && remote.sentence_id === state.cursor.sentence_id) return;
+  await followRemote(remote);
+}, 5000);
+
+async function followRemote(remote) {
+  toast('已跟随另一端的进度');
+  if (remote.chapter_id !== (state.chapter && state.chapter.chapter_id)) {
+    await loadChapter(remote.chapter_id, remote.sentence_id);
+    return;
+  }
+  lastLocalMove = Date.now();
+  moveCursor(remote.sentence_id);
+  reader.jumpTo(remote.sentence_id, { smooth: false });
+}
+
 function moveCursor(sentenceId, { scroll = false } = {}) {
   const sentence = state.findSentence(sentenceId);
   if (!sentence) return;
+  lastLocalMove = Date.now();
   const chapterId = sentenceId.split('.b')[0];
   const cursor = {
     book_id: state.book.book_id,
@@ -745,8 +781,13 @@ async function loadVoices() {
   try {
     const payload = await api.voices();
     state.voices = payload.voices || [];
+    // 引擎有三百多个音色，界面上只给常用的那些。
+    const featured = state.featuredVoices || [];
+    const shown = featured.length
+      ? state.voices.filter((voice) => featured.includes(voice.voice_id))
+      : state.voices;
     settings.voice.replaceChildren();
-    for (const voice of state.voices) {
+    for (const voice of shown) {
       settings.voice.append(el('option', {
         value: voice.voice_id,
         text: `${voice.name} · ${voice.locale}`,
@@ -755,10 +796,11 @@ async function loadVoices() {
     const wanted = state.settings.voiceId
       || (state.book ? matchVoice(state.book.language) : '')
       || state.defaultVoice;
-    if (wanted && state.voices.some((voice) => voice.voice_id === wanted)) {
+    const options = shown.length ? shown : state.voices;
+    if (wanted && options.some((voice) => voice.voice_id === wanted)) {
       settings.voice.value = wanted;
-    } else if (state.voices.length) {
-      settings.voice.value = state.voices[0].voice_id;
+    } else if (options.length) {
+      settings.voice.value = options[0].voice_id;
     }
     state.setSetting('voiceId', settings.voice.value);
     dom.btnVoice.textContent = settings.voice.selectedOptions[0]
@@ -773,12 +815,20 @@ async function loadVoices() {
 function matchVoice(language) {
   if (!language) return '';
   const prefix = language.split('-')[0].toLowerCase();
-  const exact = state.voices.find((voice) => voice.locale.toLowerCase() === language.toLowerCase());
+  const featured = state.featuredVoices || [];
+  const pool = featured.length
+    ? state.voices.filter((voice) => featured.includes(voice.voice_id))
+    : state.voices;
+  const exact = pool.find((voice) => voice.locale.toLowerCase() === language.toLowerCase());
   if (exact) return exact.voice_id;
-  const loose = state.voices.find(
+  const loose = pool.find(
     (voice) => voice.locale.split('-')[0].toLowerCase() === prefix,
   );
-  return loose ? loose.voice_id : '';
+  if (loose) return loose.voice_id;
+  const any = state.voices.find(
+    (voice) => voice.locale.split('-')[0].toLowerCase() === prefix,
+  );
+  return any ? any.voice_id : '';
 }
 
 async function handleShareCode() {
@@ -807,6 +857,7 @@ async function start() {
   try {
     const meta = await fetch('/api/v1/meta').then((response) => response.json());
     state.defaultVoice = meta.default_voice || '';
+    state.featuredVoices = meta.featured_voices || [];
   } catch (error) {
     state.defaultVoice = '';
   }

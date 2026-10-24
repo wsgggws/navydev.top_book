@@ -9,7 +9,7 @@ const BOOK_KEY = 'lector.book';
 
 const DEFAULT_SETTINGS = {
   theme: 'paper',
-  fontSize: 18,
+  fontSize: 20,
   lineHeight: 1.9,
   paraSpacing: 0.9,
   measure: 36,
@@ -60,6 +60,7 @@ export const state = new (class Store extends Emitter {
     this.sentenceIndex = -1;
     this.voices = [];
     this.defaultVoice = '';
+    this.featuredVoices = [];
   }
 
   saveSettings() {

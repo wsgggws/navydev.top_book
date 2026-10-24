@@ -27,15 +27,21 @@ class FakeEngine:
         self.calls: list[tuple[str, str, str]] = []
 
     async def voices(self) -> list[Voice]:
-        return [
-            Voice(
-                voice_id="zh-CN-XiaoxiaoNeural",
-                name="Xiaoxiao",
-                locale="zh-CN",
-                gender="female",
-                engine=self.name,
+        from lector.config import FEATURED_VOICES
+
+        voices = []
+        for voice_id in FEATURED_VOICES:
+            locale = "-".join(voice_id.split("-")[:2])
+            voices.append(
+                Voice(
+                    voice_id=voice_id,
+                    name=voice_id.split("-")[-1].replace("Neural", ""),
+                    locale=locale,
+                    gender="female",
+                    engine=self.name,
+                )
             )
-        ]
+        return voices
 
     async def synth(self, text: str, voice: str, rate: str = "+0%") -> TTSResult:
         self.calls.append((text, voice, rate))

@@ -27,6 +27,21 @@ TTS_SYNTH_TIMEOUT = 8.0
 
 DEFAULT_VOICE = "zh-CN-XiaoxiaoNeural"
 
+#: The voices the interface offers.  The engine knows three hundred of them;
+#: a reader wants a handful of familiar ones in their own language.
+FEATURED_VOICES = (
+    "zh-CN-XiaoxiaoNeural",
+    "zh-CN-XiaoyiNeural",
+    "zh-CN-YunxiNeural",
+    "zh-CN-YunjianNeural",
+    "en-US-AriaNeural",
+    "en-US-GuyNeural",
+    "en-US-JennyNeural",
+    "en-US-EricNeural",
+    "en-GB-SoniaNeural",
+    "en-GB-RyanNeural",
+)
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 

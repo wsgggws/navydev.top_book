@@ -19,7 +19,14 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from lector.api import ROUTERS
 from lector.api.deps import AppContext, RateLimiter, require_auth
 from lector.api.errors import ApiError
-from lector.config import APP_VERSION, PARSER_VERSION, Settings, ensure_dirs, load_settings
+from lector.config import (
+    APP_VERSION,
+    FEATURED_VOICES,
+    PARSER_VERSION,
+    Settings,
+    ensure_dirs,
+    load_settings,
+)
 from lector.db import Database
 from lector.store import Store
 from lector.tts.base import TTSEngine
@@ -142,6 +149,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "version": APP_VERSION,
             "parser_version": PARSER_VERSION,
             "default_voice": settings.default_voice,
+            "featured_voices": list(FEATURED_VOICES),
         }
 
     web_dir = Path(settings.web_dir)

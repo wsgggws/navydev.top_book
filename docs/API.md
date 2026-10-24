@@ -164,8 +164,15 @@
 构建信息与默认音色，给客户端做初始化用（不在 §0 的鉴权豁免之列，但同样不需要令牌以外的权限）。
 
 ```json
-{ "version": "1.0.0", "parser_version": 1, "default_voice": "zh-CN-XiaoxiaoNeural" }
+{
+  "version": "1.0.0",
+  "parser_version": 1,
+  "default_voice": "zh-CN-XiaoxiaoNeural",
+  "featured_voices": ["zh-CN-XiaoxiaoNeural", "en-US-AriaNeural"]
+}
 ```
+
+- `featured_voices` 是**界面上应当提供的常用音色**：中文（zh-CN）、美式（en-US）、英式（en-GB）各若干。引擎本身还有三百多个音色，`/tts/voices` 全部返回，客户端按需自选。
 
 ### `GET /api/v1/tts/voices`
 
@@ -388,6 +395,15 @@
 ### `GET /api/v1/books/{book_id}/progress` 的接力用法
 
 终端与网页读写同一个 `Progress`。终端 `s` 推送后，网页刷新即取到新位置；反之亦然。**不做**双向自动合并——最后写入者胜是明确定义的行为，客户端应展示 `updated_by` 以免误解。
+
+两端都实现了自动接力，读写同一行进度：
+
+| 端 | 行为 |
+| --- | --- |
+| 终端 | 游标停下 1.2 秒后自动推送（`s` 仍可立即推送，`S` 立即拉取） |
+| 网页 | 游标停下 600ms 后自动推送；阅读时每 5 秒拉取一次，本地 3 秒内没有操作就跟随远端位置并提示 |
+
+两端同时在读时以**最后写入者胜**为准；客户端应展示 `updated_by` 以免误解。
 
 ---
 

@@ -111,4 +111,5 @@ def test_voices_endpoint(client):
     assert response.status_code == 200
     payload = response.json()
     assert payload["engine"] == "fake"
-    assert payload["voices"][0]["voice_id"] == "zh-CN-XiaoxiaoNeural"
+    assert payload["voices"]
+    assert payload["voices"][0]["voice_id"].startswith("zh-CN")

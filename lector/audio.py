@@ -11,7 +11,7 @@ import asyncio
 import time
 from dataclasses import dataclass
 
-from lector.config import Settings
+from lector.config import FEATURED_VOICES, Settings
 from lector.store import Store
 from lector.tts.base import TTSEngine, TTSUnavailable, Voice
 from lector.tts.cache import AudioCache, CachedTile, cache_key
@@ -79,6 +79,11 @@ class AudioService:
             return fallback
         if fallback.split("-")[0].lower() == prefix:
             return fallback
+        # 常用音色优先，其次是引擎里任何同语言的声音。
+        featured = [v for v in voices if v.voice_id in FEATURED_VOICES]
+        for voice in featured:
+            if voice.locale.split("-")[0].lower() == prefix:
+                return voice.voice_id
         for voice in voices:
             if voice.locale.split("-")[0].lower() == prefix:
                 return voice.voice_id
