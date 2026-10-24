@@ -89,7 +89,7 @@ jobs:
           {
             printf 'LECTOR_TOKEN=%s\n' "${LECTOR_TOKEN}"
             printf 'LECTOR_TTS_ENGINE=edge\n'
-            printf 'LECTOR_IMAGE=ghcr.io/%s:%s\n' "${GITHUB_REPOSITORY}" "${GITHUB_SHA}"
+            printf 'LECTOR_IMAGE=ghcr.nju.edu.cn/%s:%s\n' "${GITHUB_REPOSITORY}" "${GITHUB_SHA}"
           } > release/lector.env
 
       - name: Setup SSH agent
@@ -133,10 +133,6 @@ jobs:
               echo "服务器缺少 Docker Compose v2。" >&2
               exit 1
             }
-            printf '%s' '${{ secrets.GITHUB_TOKEN }}' | \
-              docker login ghcr.io --username '${{ github.actor }}' --password-stdin
-            trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
-
             RELEASE_DIR="${APP_ROOT}/releases/${RELEASE_ID}"
             CURRENT_LINK="${APP_ROOT}/current"
             PREVIOUS="$(readlink -f "${CURRENT_LINK}" 2>/dev/null || true)"

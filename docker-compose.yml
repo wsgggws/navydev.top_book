@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: ${LECTOR_IMAGE:-ghcr.io/wsgggws/navydev.top_book:latest}
+    image: ${LECTOR_IMAGE:-ghcr.nju.edu.cn/wsgggws/navydev.top_book:latest}
     container_name: navydev-top-book
     restart: unless-stopped
     env_file:

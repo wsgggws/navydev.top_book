@@ -85,8 +85,8 @@ chmod 600 ~/.ssh/navydev_top_book_deploy
 3. 通过 SCP 上传到 `~/deploy/navydev.top_book-staging-<sha>/`；
 4. 在服务器解包到 `~/deploy/navydev.top_book/releases/<sha>/`；
 5. 在 GitHub runner 构建 `linux/amd64` 镜像并推送到 GHCR；
-6. 服务器登录 GHCR，写入权限为 600 的 `.env`；
-7. 在 release 目录执行 `make docker-release` 拉取并启动镜像；
+6. 写入权限为 600 的 `.env`；
+7. 从国内 GHCR 镜像站拉取并启动镜像（`ghcr.nju.edu.cn`）；
 8. 轮询 `http://127.0.0.1:8010/book/api/v1/health`；
 9. 健康检查通过后切换 `~/deploy/navydev.top_book/current`；
 10. 失败则用上一个 release 的镜像标签重新启动并回滚。
@@ -98,7 +98,7 @@ chmod 600 ~/.ssh/navydev_top_book_deploy
 ```dotenv
 LECTOR_TOKEN=<你的令牌>
 LECTOR_TTS_ENGINE=edge
-LECTOR_IMAGE=ghcr.io/wsgggws/navydev.top_book:<git-sha>
+LECTOR_IMAGE=ghcr.nju.edu.cn/wsgggws/navydev.top_book:<git-sha>
 ```
 
 `LECTOR_DATA_DIR=/data`、监听地址和端口由 `docker-compose.yml` 固定。
@@ -110,7 +110,7 @@ LECTOR_IMAGE=ghcr.io/wsgggws/navydev.top_book:<git-sha>
 ```yaml
 services:
   lector:
-    image: ghcr.io/wsgggws/navydev.top_book:<git-sha>
+    image: ghcr.nju.edu.cn/wsgggws/navydev.top_book:<git-sha>
     container_name: navydev-top-book
     restart: unless-stopped
     ports:
