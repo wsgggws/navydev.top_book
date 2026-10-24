@@ -184,3 +184,45 @@ def test_the_shelf_shows_each_books_own_progress(client, epub2_bytes: bytes):
     books = {book["book_id"]: book for book in client.get("/api/v1/books").json()}
     assert books[first_id]["progress"] > 0
     assert books[second_id]["progress"] == 0
+
+
+def test_the_app_can_live_under_a_path(tmp_path, epub2_bytes: bytes):
+    """挂在 /book 下时，接口、静态资源与短码都跟着走。"""
+    from fastapi.testclient import TestClient
+
+    from lector.config import load_settings
+    from lector.web import create_app
+
+    settings = load_settings(tmp_path / "data")
+    settings = settings.__class__(**{**settings.__dict__, "base_path": "/book"})
+    client = TestClient(create_app(settings))
+    book_id = client.post(
+        "/book/api/v1/books",
+        files={"file": ("book.epub", epub2_bytes, "application/epub+zip")},
+    ).json()["book"]["book_id"]
+
+    # 接口在 /book/api/v1
+    assert client.get("/book/api/v1/health").status_code == 200
+    assert client.get("/book/api/v1/books").status_code == 200
+    # 页面在 /book/，并把基路径告诉前端
+    page = client.get("/book/")
+    assert page.status_code == 200
+    assert 'window.lectorBase="/book"' in page.text
+    # 封面地址也带前缀（测试书没有封面，有的话必须是带前缀的）
+    books = client.get("/book/api/v1/books").json()
+    if books[0]["cover_url"]:
+        assert books[0]["cover_url"].startswith("/book/api/v1/")
+
+    # 短码链接带前缀
+    chapter = client.get(f"/book/api/v1/books/{book_id}/chapters/c0").json()["chapter"]
+    sentence_id = chapter["blocks"][1]["sentences"][0]["id"]
+    created = client.post(
+        "/book/api/v1/s",
+        json={
+            "book_id": book_id,
+            "chapter_id": "c0",
+            "sentence_id": sentence_id,
+            "word_index": None,
+        },
+    ).json()
+    assert created["url"].startswith("/book/s/")

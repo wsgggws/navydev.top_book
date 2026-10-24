@@ -6,13 +6,14 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -70,6 +71,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         version=APP_VERSION,
         description="EPUB 阅读器 + 有声书播放器",
     )
+    base = settings.base_path
+
     app.state.ctx = AppContext(
         settings=settings,
         db=db,
@@ -135,14 +138,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     for router in ROUTERS:
-        app.include_router(router, prefix=API_PREFIX)
+        app.include_router(router, prefix=f"{base}{API_PREFIX}")
 
-    @app.get("/s/{code}", include_in_schema=False)
+    @app.get(f"{base}/s/{{code}}", include_in_schema=False)
     async def share_link(code: str) -> RedirectResponse:
         """Open a shared position in the browser application."""
-        return RedirectResponse(url=f"/?s={code}")
+        return RedirectResponse(url=f"{base}/?s={code}")
 
-    @app.get("/api/v1/meta", include_in_schema=False)
+    @app.get(f"{base}/api/v1/meta", include_in_schema=False)
     async def meta(request: Request) -> dict:
         """Build information for the browser application."""
         await require_auth(request)
@@ -157,7 +160,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     web_dir = Path(settings.web_dir)
     if web_dir.exists():
-        app.mount("/", StaticFiles(directory=str(web_dir), html=True), name="web")
+        @app.get(f"{base}/", include_in_schema=False)
+        async def index() -> HTMLResponse:
+            """The application shell.
+
+            The base path is injected here: the client needs to know it to
+            build the API URLs when the app is served under a prefix
+            (for example behind nginx at ``/book``).
+            """
+            markup = (web_dir / "index.html").read_text("utf-8")
+            script = (
+                f'<script>window.lectorBase={json.dumps(base)}</script>'
+            )
+            markup = markup.replace("<head>", f"<head>\n{script}", 1)
+            return HTMLResponse(markup)
+
+        app.mount(base or "/", StaticFiles(directory=str(web_dir), html=True), name="web")
     return app
 
 

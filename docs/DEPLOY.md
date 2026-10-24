@@ -37,6 +37,28 @@ uv run lector-server
 sqlite3 "$LECTOR_DATA_DIR/lector.db" ".backup '/backup/lector-$(date +%F).db'"
 ```
 
+## 1.1 挂在某个路径下（可选）
+
+应用可以挂在域名下的某个路径，比如 `https://navydev.top/book`：
+
+```bash
+export LECTOR_BASE_PATH=/book
+```
+
+服务端会把接口放在 `/book/api/v1`、静态资源放在 `/book/`，
+短码链接也变成 `/book/s/<code>`；网页端从服务端拿到的基路径里知道这些。
+
+nginx 那边 **路径要原样传过去**：
+
+```nginx
+location /book/ {
+    proxy_pass http://lector_app;      # 后面不能带斜杠
+    ...
+}
+```
+
+带斜杠等于把 `/book` 前缀吃掉，应用就找不到自己的接口了。
+
 ## 2. systemd
 
 `deploy/lector.service`：
@@ -55,6 +77,7 @@ Environment=LECTOR_DATA_DIR=/var/lib/lector
 Environment=LECTOR_HOST=127.0.0.1
 Environment=LECTOR_PORT=8000
 Environment=LECTOR_TOKEN=换成你的令牌
+# 挂在路径下时才需要：Environment=LECTOR_BASE_PATH=/book
 ExecStart=/opt/lector/.venv/bin/lector-server
 Restart=always
 RestartSec=3

@@ -382,7 +382,11 @@ class Store:
             language=row["language"],
             sha256=row["sha256"],
             size_bytes=row["size_bytes"],
-            cover_url=f"/api/v1/books/{row['book_id']}/cover" if has_cover else None,
+            cover_url=(
+                f"{self.settings.base_path}/api/v1/books/{row['book_id']}/cover"
+                if has_cover
+                else None
+            ),
             chapter_count=row["chapter_count"],
             sentence_count=row["sentence_count"],
             tts_state=row["tts_state"],

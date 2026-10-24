@@ -91,7 +91,9 @@ async def get_timeline(
                 sentence_id=sentence_id,
                 start=round(cursor, 3),
                 end=round(cursor + duration, 3),
-                audio_url=f"/api/v1/books/{book_id}/audio/{sentence_id}.mp3",
+                audio_url=(
+                    f"{ctx.settings.base_path}/api/v1/books/{book_id}/audio/{sentence_id}.mp3"
+                ),
                 word_count=_word_count(ctx, book_id, sentence_id),
             )
         )

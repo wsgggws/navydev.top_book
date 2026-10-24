@@ -1002,7 +1002,8 @@ async function handleShareCode() {
 async function start() {
   applySettings();
   try {
-    const meta = await fetch('/api/v1/meta').then((response) => response.json());
+    const meta = await fetch(`${window.lectorBase || ''}/api/v1/meta`)
+      .then((response) => response.json());
     state.defaultVoice = meta.default_voice || '';
     state.featuredVoices = meta.featured_voices || [];
     state.defaultVoices = meta.default_voices || {};

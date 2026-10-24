@@ -40,9 +40,10 @@ async def create_short_code(
             payload.word_index,
         ),
     )
+    base = get_context(request).settings.base_path
     if existing is not None:
         code = existing["code"]
-        return ShortCodeResponse(code=code, url=f"/s/{code}")
+        return ShortCodeResponse(code=code, url=f"{base}/s/{code}")
     for _ in range(CODE_ATTEMPTS):
         code = generate_short_code()
         taken = ctx.store.db.query_one(
@@ -66,7 +67,7 @@ async def create_short_code(
                     utcnow(),
                 ),
             )
-        return ShortCodeResponse(code=code, url=f"/s/{code}")
+        return ShortCodeResponse(code=code, url=f"{base}/s/{code}")
     raise ApiError(500, "INTERNAL_ERROR", "短码生成失败，请重试")
 
 

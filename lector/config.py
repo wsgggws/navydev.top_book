@@ -72,6 +72,7 @@ class Settings:
     tts_engine: str
     default_voice: str
     max_upload_bytes: int
+    base_path: str
 
     @property
     def web_dir(self) -> Path:
@@ -97,6 +98,9 @@ def load_settings(data_dir: Path | str | None = None) -> Settings:
     """
     root = Path(data_dir or os.environ.get("LECTOR_DATA_DIR") or (REPO_ROOT / "data")).resolve()
     token = os.environ.get("LECTOR_TOKEN", "").strip()
+    base_path = os.environ.get("LECTOR_BASE_PATH", "").strip().rstrip("/")
+    if base_path and not base_path.startswith("/"):
+        base_path = "/" + base_path
     return Settings(
         data_dir=root,
         db_path=root / "lector.db",
@@ -109,6 +113,7 @@ def load_settings(data_dir: Path | str | None = None) -> Settings:
         tts_engine=os.environ.get("LECTOR_TTS_ENGINE", "edge").strip().lower() or "edge",
         default_voice=os.environ.get("LECTOR_VOICE", DEFAULT_VOICE).strip() or DEFAULT_VOICE,
         max_upload_bytes=_env_int("LECTOR_MAX_UPLOAD", MAX_UPLOAD_BYTES),
+        base_path=base_path,
     )
 
 

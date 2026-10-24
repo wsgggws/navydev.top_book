@@ -94,7 +94,8 @@ export class ReaderView {
     if (block.type === 'img') {
       const figure = el('figure', { class: 'blk blk-img' });
       if (block.src) {
-        figure.append(el('img', { src: `/api/v1/books/${state.book.book_id}/media/${block.src}`, alt: block.alt || '' }));
+        const media = `${window.lectorBase || ''}/api/v1/books/${state.book.book_id}/media/${block.src}`;
+        figure.append(el('img', { src: media, alt: block.alt || '' }));
       }
       return figure;
     }
@@ -142,11 +143,21 @@ export class ReaderView {
   setCurrent(sentenceId, { scroll = false } = {}) {
     if (this.currentElement) {
       this.currentElement.classList.remove('is-current', 'is-speaking');
+      // 上一句的词高亮也要撤掉：留着那一层底色，看上去就是"两句都在高亮"。
+      this.clearWordHighlight(this.currentElement);
     }
     const node = this.elementFor(sentenceId);
     this.currentElement = node;
     if (!node) return;
     node.classList.add('is-current');
+  }
+
+  /** 撤掉一句里的逐词高亮，让它回到普通文字。 */
+  clearWordHighlight(element) {
+    if (!element) return;
+    for (const span of element.querySelectorAll('.w.is-read, .w.is-now')) {
+      span.classList.remove('is-read', 'is-now');
+    }
   }
 
   /** Replace the text of a sentence with timed word spans. */

@@ -1,6 +1,8 @@
 /* The API client. One place that knows about URLs and error codes. */
 
-const BASE = '/api/v1';
+// 服务端可能把整个应用挂在某个前缀下（nginx 的 /book），
+// 那里注入 window.lectorBase，接口就跟着走。
+const BASE = `${window.lectorBase || ''}/api/v1`;
 const TOKEN_KEY = 'lector.token';
 
 /** The access token, when the server asks for one. */

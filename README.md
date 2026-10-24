@@ -75,6 +75,7 @@ make book books/my.epub      # 造一本书，并送进服务端
 | `LECTOR_TTS_ENGINE` | `edge` | `edge` / `espeak` / `auto` |
 | `LECTOR_VOICE` | `zh-CN-XiaoxiaoNeural` | 默认音色 |
 | `LECTOR_MAX_UPLOAD` | `52428800` | 上传上限（字节） |
+| `LECTOR_BASE_PATH` | 空 | 把应用挂在某个路径下（如 `/book`），nginx 那边路径要原样传过去 |
 
 ## 线上部署与终端接入
 
