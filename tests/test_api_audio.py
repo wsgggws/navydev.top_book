@@ -20,6 +20,7 @@ def test_audio_is_synthesised_on_demand(client, epub2_bytes: bytes, engine):
     assert response.headers["cache-control"] == "public, max-age=31536000, immutable"
     assert int(response.headers["content-length"]) == len(response.content)
     assert engine.calls
+    assert engine.calls[-1][2] == "+0%"
 
 
 def test_audio_is_cached(client, epub2_bytes: bytes, engine):
