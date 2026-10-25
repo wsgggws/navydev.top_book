@@ -210,6 +210,8 @@ class BaseReaderScreen(Screen):
         Binding("ctrl+u", "half_page_up", "上半页"),
         Binding("ctrl+f", "page_down", "下翻一页"),
         Binding("ctrl+b", "page_up", "上翻一页"),
+        Binding("pagedown", "page_down", "下翻一页"),
+        Binding("pageup", "page_up", "上翻一页"),
         Binding("ctrl+e", "scroll_down", "下滚一行"),
         Binding("ctrl+y", "scroll_up", "上滚一行"),
         Binding("H", "screen_top", "屏幕顶"),
@@ -221,12 +223,15 @@ class BaseReaderScreen(Screen):
         Binding("bracketleft", "previous_chapter", "上一章"),
         Binding("bracketright", "next_chapter", "下一章"),
         Binding("G", "chapter_end", "章末"),
+        Binding("home", "chapter_start", "章首"),
+        Binding("end", "chapter_end", "章末"),
         # vim 的搜索
         Binding("slash", "search", "搜索"),
         Binding("n", "next_hit", "下一处"),
         Binding("N", "previous_hit", "上一处"),
         # 其余
         Binding("tab", "focus_toc", "目录"),
+        Binding("t", "focus_toc", "目录"),
         Binding("ctrl+w", "switch_pane", "切换窗格"),
         Binding("q", "back", "返回"),
     ]
@@ -379,7 +384,7 @@ class BaseReaderScreen(Screen):
         chapter_title = self.chapter.get("title", "") if self.chapter else ""
         self.query_one("#status-bar", Static).update(
             f" {chapter_title} · {percent}% · 句 {current}/{total} · "
-            "Space 听书 · q 返回"
+            "Space/p 播放 · q 返回"
         )
 
     # -- actions ---------------------------------------------------------
@@ -668,7 +673,8 @@ class ReaderScreen(BaseReaderScreen):
     """The reading screen."""
 
     BINDINGS = [
-        Binding("space", "listen", "听书"),
+        Binding("space", "listen", "播放"),
+        Binding("p", "listen", "播放"),
     ]
 
     def action_listen(self) -> None:
@@ -684,6 +690,12 @@ class ListenScreen(BaseReaderScreen):
 
     BINDINGS = [
         Binding("space", "toggle", "播放/暂停"),
+        Binding("p", "toggle", "播放/暂停"),
+        Binding("r", "replay", "重播"),
+        Binding("plus", "faster", "加速"),
+        Binding("equals", "faster", "加速"),
+        Binding("minus", "slower", "减速"),
+        Binding("0", "reset_rate", "原速"),
     ]
 
     def __init__(self, book_id: str, chapter_id: str | None = None, sentence_index: int = 0) -> None:
@@ -725,6 +737,33 @@ class ListenScreen(BaseReaderScreen):
             self.stop_playback()
         else:
             self.start_playback()
+
+    def action_replay(self) -> None:
+        """Restart the current sentence."""
+        if not self.playing:
+            self.start_playback()
+            return
+        if self._timer is not None:
+            self._timer.stop()
+            self._timer = None
+        self._play_current()
+
+    def action_faster(self) -> None:
+        self._set_rate(self.app.audio.rate + 0.25)
+
+    def action_slower(self) -> None:
+        self._set_rate(self.app.audio.rate - 0.25)
+
+    def action_reset_rate(self) -> None:
+        self._set_rate(1.0)
+
+    def _set_rate(self, rate: float) -> None:
+        self.app.audio.rate = max(0.75, min(2.0, round(rate, 2)))
+        self.notify(f"倍速：{self.app.audio.rate:.2f}×", title="听书")
+        if self.playing:
+            self._play_current()
+        else:
+            self.update_audio_panel()
 
     def start_playback(self) -> None:
         """Play the current sentence and continue with the next ones."""

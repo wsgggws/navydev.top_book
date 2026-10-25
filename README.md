@@ -52,15 +52,17 @@ make terminal   # 启动终端端
 make book books/my.epub
 ```
 
-终端连接线上服务：
+通过 Homebrew 安装终端：
 
 ```bash
-cd terminal
-uv sync
-LECTOR_URL=https://navydev.top/ebook uv run lector
+brew tap wsgggws/ebook https://github.com/wsgggws/navydev.top_ebook
+brew install wsgggws/ebook/lector
+LECTOR_TOKEN="你的 reader token" lector
 ```
 
-终端键位见 [docs/UI.md](docs/UI.md) §8。
+终端默认连接 `https://navydev.top/ebook`，自动跟随终端 ANSI 配色，也支持
+`dracula`、`catppuccin-*` 等主题。开发时可在 `terminal/` 内执行 `uv sync`，
+键位与主题设置见 [terminal/README.md](terminal/README.md)。
 
 ## 添加书籍
 

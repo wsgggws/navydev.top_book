@@ -17,14 +17,16 @@ CONFIG_DIR = Path(
 ) / "lector"
 CONFIG_FILE = CONFIG_DIR / "reader.json"
 PROGRESS_FILE = CONFIG_DIR / "progress.json"
+DEFAULT_URL = "https://navydev.top/ebook"
 
 
 @dataclass
 class ClientConfig:
     """Where the server is and how to talk to it."""
 
-    url: str = "http://127.0.0.1:8000"
+    url: str = DEFAULT_URL
     token: str = ""
+    theme: str = "auto"
     path: Path = CONFIG_FILE
 
     @classmethod
@@ -35,7 +37,13 @@ class ClientConfig:
         """
         url = os.environ.get("LECTOR_URL", "").strip()
         token = os.environ.get("LECTOR_TOKEN", "").strip()
-        config = cls(url=url or cls.url, token=token, path=path or CONFIG_FILE)
+        theme = os.environ.get("LECTOR_THEME", "").strip()
+        config = cls(
+            url=url or cls.url,
+            token=token,
+            theme=theme or cls.theme,
+            path=path or CONFIG_FILE,
+        )
         if config.path.exists():
             try:
                 payload = json.loads(config.path.read_text("utf-8"))
@@ -46,13 +54,19 @@ class ClientConfig:
                 config.url = str(payload.get("url") or config.url).rstrip("/")
             if not token:
                 config.token = str(payload.get("token") or "")
+            if not theme:
+                config.theme = str(payload.get("theme") or config.theme)
         return config
 
     def save(self) -> None:
         """Write the settings to disk."""
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(
-            json.dumps({"url": self.url, "token": self.token}, ensure_ascii=False, indent=2),
+            json.dumps(
+                {"url": self.url, "token": self.token, "theme": self.theme},
+                ensure_ascii=False,
+                indent=2,
+            ),
             "utf-8",
         )
         try:

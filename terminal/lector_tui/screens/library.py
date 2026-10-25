@@ -24,8 +24,11 @@ class LibraryScreen(Screen):
     # 终端端只读：上传与删除是网页端的事，终端不碰书架。
     BINDINGS = [
         Binding("enter", "open", "打开"),
+        Binding("space", "listen", "听书"),
         Binding("r", "refresh", "刷新"),
         Binding("c", "connect", "连接"),
+        Binding("g", "first_book", "首本"),
+        Binding("G", "last_book", "末本"),
         Binding("q", "quit", "退出"),
     ]
 
@@ -86,6 +89,26 @@ class LibraryScreen(Screen):
             return
         book = self._books[index]
         self.app.push_screen(ReaderScreen(book["book_id"]))
+
+    def action_listen(self) -> None:
+        """Open the selected book and start listening immediately."""
+        listing = self.query_one("#library-list", VimListView)
+        index = listing.index
+        if index is None or index >= len(self._books):
+            return
+        from lector_tui.screens.listen import ListenScreen
+
+        self.app.push_screen(ListenScreen(self._books[index]["book_id"]))
+
+    def action_first_book(self) -> None:
+        listing = self.query_one("#library-list", VimListView)
+        if self._books:
+            listing.index = 0
+
+    def action_last_book(self) -> None:
+        listing = self.query_one("#library-list", VimListView)
+        if self._books:
+            listing.index = len(self._books) - 1
 
     def action_refresh(self) -> None:
         """Reload the shelf."""

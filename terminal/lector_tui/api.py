@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import dataclass
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
@@ -41,20 +40,13 @@ class ApiClient:
             url = f"{url}?{urlencode(params)}"
         return url
 
-    def request(self, path: str, params: dict | None = None, method: str = "GET",
-                body: dict | None = None, raw: bool = False):
-        """Perform one request and return the decoded payload."""
+    def request(self, path: str, params: dict | None = None):
+        """Perform one read-only request and return the decoded payload."""
         headers = self._headers()
-        data = None
-        if body is not None:
-            data = json.dumps(body).encode("utf-8")
-            headers["Content-Type"] = "application/json"
-        request = Request(self._url(path, params), data=data, headers=headers, method=method)
+        request = Request(self._url(path, params), headers=headers, method="GET")
         try:
             with urlopen(request, timeout=30) as response:
                 payload = response.read()
-                if raw:
-                    return payload
                 if not payload:
                     return None
                 return json.loads(payload.decode("utf-8"))

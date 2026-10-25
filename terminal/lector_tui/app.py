@@ -6,7 +6,8 @@ The browser keeps its own position independently.
 
 from __future__ import annotations
 
-import os
+import argparse
+from importlib.metadata import PackageNotFoundError, version
 
 from textual.app import App
 from textual.theme import Theme
@@ -15,6 +16,7 @@ from lector_tui.api import ApiClient
 from lector_tui.audio import AudioPlayer
 from lector_tui.config import ClientConfig
 from lector_tui.screens.library import LibraryScreen
+from lector_tui.theme import resolve_theme
 
 #: The three themes of the interface specification.
 THEMES = {
@@ -61,6 +63,25 @@ THEMES = {
         dark=True,
     ),
 }
+
+THEME_CYCLE = (
+    "auto",
+    "ansi-dark",
+    "ansi-light",
+    "dracula",
+    "catppuccin-mocha",
+    "catppuccin-frappe",
+    "catppuccin-latte",
+    "gruvbox",
+    "nord",
+    "solarized-dark",
+    "solarized-light",
+    "tokyo-night",
+    "rose-pine",
+    "paper",
+    "sepia",
+    "night",
+)
 
 
 class LectorApp(App):
@@ -174,7 +195,13 @@ class LectorApp(App):
         ("question_mark", "help", "帮助"),
     ]
 
-    def __init__(self, base_url: str | None = None, token: str | None = None) -> None:
+    def __init__(
+        self,
+        base_url: str | None = None,
+        token: str | None = None,
+        theme: str | None = None,
+        theme_preference: str | None = None,
+    ) -> None:
         super().__init__()
         self.config = ClientConfig.load()
         if base_url:
@@ -183,11 +210,10 @@ class LectorApp(App):
             self.config.token = token
         self.api = ApiClient(base_url=self.config.url, token=self.config.token)
         self.audio = AudioPlayer()
-        for theme in THEMES.values():
-            self.register_theme(theme)
-        self.theme = os.environ.get("LECTOR_THEME", "paper")
-        if self.theme not in THEMES:
-            self.theme = "paper"
+        for custom_theme in THEMES.values():
+            self.register_theme(custom_theme)
+        preference = theme_preference or theme or self.config.theme
+        self._apply_theme(preference, actual=theme, save=False)
 
     def on_mount(self) -> None:
         self.push_screen(LibraryScreen())
@@ -200,10 +226,33 @@ class LectorApp(App):
         self.api = ApiClient(base_url=self.config.url, token=self.config.token)
 
     def action_cycle_theme(self) -> None:
-        """Switch between the three themes."""
-        order = list(THEMES)
-        index = order.index(self.theme) if self.theme in order else 0
-        self.theme = order[(index + 1) % len(order)]
+        """Cycle ANSI, popular terminal schemes, and the built-in themes."""
+        try:
+            index = THEME_CYCLE.index(self.theme_preference)
+        except ValueError:
+            index = 0
+        preference = THEME_CYCLE[(index + 1) % len(THEME_CYCLE)]
+        self._apply_theme(preference, notify=True)
+
+    def _apply_theme(
+        self,
+        preference: str,
+        *,
+        actual: str | None = None,
+        save: bool = True,
+        notify: bool = False,
+    ) -> None:
+        preference = (preference or "auto").strip()
+        resolved = actual or resolve_theme(preference)
+        if resolved not in self.available_themes:
+            resolved = "ansi-dark"
+        self.theme_preference = preference
+        self.theme = resolved
+        if save:
+            self.config.theme = preference
+            self.config.save()
+        if notify:
+            self.notify(f"主题：{resolved}", title="外观")
 
     def action_toggle_fullscreen(self) -> None:
         """Show the text in the whole screen, or shrink it back."""
@@ -214,8 +263,8 @@ class LectorApp(App):
     def action_help(self) -> None:
         """Show the key bindings."""
         self.notify(
-            "hjkl 移动 · ←→ 换句 · gg/G 章首末 · Ctrl+d/u 半页 · / 搜索 · "
-            "Space 听书 · [ ] 换章 · f 全屏 · m 主题 · q 返回",
+            "hjkl 移动 · Space/p 播放暂停 · r 重播 · +/- 倍速 · "
+            "/ 搜索 · [ ] 换章 · t 目录 · f 全屏 · m 主题 · q 返回",
             title="快捷键",
             timeout=8,
         )
@@ -224,9 +273,36 @@ class LectorApp(App):
         self.audio.cleanup()
 
 
-def main() -> None:
+def _version() -> str:
+    try:
+        return version("lector-tui")
+    except PackageNotFoundError:
+        return "dev"
+
+
+def main(argv: list[str] | None = None) -> None:
     """Entry point of the terminal client."""
-    LectorApp().run()
+    parser = argparse.ArgumentParser(
+        prog="lector",
+        description="只读终端客户端：阅读和收听 navydev.top/ebook。",
+    )
+    parser.add_argument("--url", help="服务端地址，默认 https://navydev.top/ebook")
+    parser.add_argument("--token", help="LECTOR_TOKEN；也可用环境变量")
+    parser.add_argument(
+        "--theme",
+        help="auto（默认）、ansi-dark、ansi-light、dracula、catppuccin-mocha 等",
+    )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {_version()}")
+    args = parser.parse_args(argv)
+
+    config = ClientConfig.load()
+    preference = args.theme or config.theme
+    LectorApp(
+        base_url=args.url,
+        token=args.token,
+        theme=resolve_theme(preference, probe=True),
+        theme_preference=preference,
+    ).run()
 
 
 if __name__ == "__main__":

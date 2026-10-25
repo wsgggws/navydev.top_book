@@ -4,7 +4,7 @@
 # 所以这个目录可以单独装、单独发版，服务端改了也不影响它。
 [project]
 name = "lector-tui"
-version = "1.0.0"
+version = "1.1.0"
 description = "Lector 的只读终端端：读书、听书、独立记录本机阅读位置"
 readme = "README.md"
 requires-python = ">=3.12"
