@@ -9,6 +9,11 @@ const BOOK_KEY = 'lector.book';
 /** 每本书自己的东西：音色、倍速、读到哪。 */
 const BOOK_PREFS_KEY = 'lector.books';
 
+const BOOK_SETTINGS = {
+  rate: 'rate', gap: 'gap', voiceId: 'voiceId', voiceGender: 'gender',
+  voiceTouched: 'voiceTouched', voiceGenderTouched: 'voiceGenderTouched',
+};
+
 const DEFAULT_SETTINGS = {
   theme: 'sepia',
   themeTouched: false,
@@ -40,10 +45,8 @@ function loadSettings() {
     if (!raw) return { ...DEFAULT_SETTINGS };
     const saved = JSON.parse(raw);
     const settings = { ...DEFAULT_SETTINGS, ...saved };
-    // 旧版本没有“用户主动选择过性别”的标记；迁移到新的男声默认值。
-    if (saved.voiceGenderTouched !== true) {
-      settings.voiceGender = DEFAULT_SETTINGS.voiceGender;
-    }
+    // 旧的全局朗读设置不能成为另一本书的默认值。
+    for (const key of Object.keys(BOOK_SETTINGS)) settings[key] = DEFAULT_SETTINGS[key];
     if (saved.themeTouched !== true) {
       settings.theme = DEFAULT_SETTINGS.theme;
     }
@@ -92,14 +95,34 @@ export const state = new (class Store extends Emitter {
 
   saveSettings() {
     try {
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(this.settings));
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(Object.fromEntries(
+        Object.entries(this.settings).filter(([key]) => !(key in BOOK_SETTINGS)),
+      )));
     } catch (error) { /* storage may be unavailable */ }
     this.emit('settings', this.settings);
   }
 
   setSetting(key, value) {
     this.settings[key] = value;
+    if (key in BOOK_SETTINGS && this.book) {
+      this.setPref(this.book.book_id, BOOK_SETTINGS[key], value);
+    }
     this.saveSettings();
+  }
+
+  /** 换书时完整恢复朗读配置，缺省字段始终使用产品默认值。 */
+  restoreBookSettings(bookId) {
+    const prefs = this.prefsFor(bookId);
+    for (const [key, pref] of Object.entries(BOOK_SETTINGS)) {
+      this.settings[key] = prefs[pref] ?? DEFAULT_SETTINGS[key];
+    }
+    if (!Number.isFinite(this.settings.rate) || this.settings.rate < 0.75 || this.settings.rate > 2) {
+      this.settings.rate = DEFAULT_SETTINGS.rate;
+    }
+    if (!['male', 'female', 'any'].includes(this.settings.voiceGender)) {
+      this.settings.voiceGender = DEFAULT_SETTINGS.voiceGender;
+    }
+    this.settings.voiceTouched = Boolean(prefs.voiceId);
   }
 
   /** 一本书自己的偏好。 */

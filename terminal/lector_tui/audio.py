@@ -45,16 +45,17 @@ class AudioPlayer:
     def available(self) -> bool:
         return self.backend is not None
 
-    def _command(self, path: str) -> list[str]:
+    def _command(self, path: str, rate: float = 1.0) -> list[str]:
         backend = self.backend or ""
         if backend == "afplay":
-            return ["afplay", path]
+            return ["afplay", "-r", str(rate), "-q", "1", path]
         if backend == "ffplay":
-            return ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", path]
+            return ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet",
+                    "-af", f"atempo={rate}", path]
         if backend == "aplay":
             return ["aplay", "-q", path]
         if backend == "mpv":
-            return ["mpv", "--no-video", "--really-quiet", path]
+            return ["mpv", "--no-video", "--really-quiet", f"--speed={rate}", path]
         return []
 
     def _adjust_rate(self, source: str) -> str:
@@ -81,9 +82,12 @@ class AudioPlayer:
         if not self.available:
             raise RuntimeError("没有可用的音频播放器")
         adjusted = self._adjust_rate(path)
-        self.effective_rate = self.rate if adjusted != path else 1.0
+        native_rate = self.rate if adjusted == path else 1.0
+        if self.backend == "aplay" and abs(native_rate - 1) >= 0.01:
+            raise RuntimeError("aplay 倍速播放需要 ffmpeg，请安装 ffmpeg 或改用 mpv")
+        self.effective_rate = self.rate
         self._process = subprocess.Popen(
-            self._command(adjusted),
+            self._command(adjusted, native_rate),
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )

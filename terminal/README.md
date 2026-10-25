@@ -81,6 +81,7 @@ iTerm2、Kitty 等）直接绘制高分辨率图片，其余终端降级为真�
 | `Space` / `p` | 播放 / 暂停 |
 | `r` | 重播当前句 |
 | `+` / `-` / `0` | 加速 / 减速 / 恢复 1.0× |
+| `v` | 听书时切换该书语言的男声 / 女声 |
 | `[` / `]` | 上一章 / 下一章 |
 | `Ctrl+d` / `Ctrl+u` | 下半页 / 上半页 |
 | `Ctrl+f` / `Ctrl+b` | 下一页 / 上一页 |
@@ -91,11 +92,15 @@ iTerm2、Kitty 等）直接绘制高分辨率图片，其余终端降级为真�
 | `m` | 切换主题 |
 | `q` | 返回；在书架页退出 |
 
+倍速与男女声只对当前书生效；新书默认 1.0×、男声，切回或重启后恢复。
+有 ffmpeg 时用它保留音调变速；没有时使用 afplay / ffplay / mpv 原生倍速。
+只有 aplay 的 Linux 环境需要安装 ffmpeg 或改用 mpv 才能变速。
+
 ## 本地配置
 
 ```text
 ~/.config/lector/reader.json     URL、token、主题
-~/.config/lector/progress.json   终端自己的阅读位置
+~/.config/lector/progress.json   每本书的位置、倍速、性别与音色
 ~/Library/Caches/lector/images/  macOS 图片缓存
 ~/.cache/lector/images/          Linux 图片缓存
 ```

@@ -104,3 +104,45 @@ def test_reader_uses_spine_order_even_when_toc_is_nested_or_incomplete():
     BaseReaderScreen.load_book(reader)
     assert reader.chapter_ids == [f"c{index}" for index in range(12)]
     assert seen == [("c0", None)]
+
+
+def test_listening_rate_is_local_to_each_book_and_survives_restart(tmp_path, monkeypatch):
+    from lector_tui.api import ApiClient
+    from lector_tui.app import LectorApp
+    from lector_tui.screens.reader import ListenScreen
+
+    monkeypatch.setenv('LECTOR_PROGRESS_FILE', str(tmp_path / 'progress.json'))
+    monkeypatch.setattr(ApiClient, 'list_books', lambda self: [])
+    monkeypatch.setattr(ListenScreen, 'load_book', lambda self: setattr(self, 'book', {'language': 'zh-CN'}))
+    monkeypatch.setattr(ApiClient, 'voices', lambda self: {'voices': [
+        {'voice_id': 'zh-male', 'locale': 'zh-CN', 'gender': 'male'},
+        {'voice_id': 'zh-female', 'locale': 'zh-CN', 'gender': 'female'},
+    ]})
+    monkeypatch.setattr(ListenScreen, 'start_playback', lambda self: None)
+
+    async def scenario():
+        app = LectorApp(theme='night')
+        async with app.run_test() as pilot:
+            a = ListenScreen('a')
+            await app.push_screen(a)
+            await pilot.press('plus')
+            assert app.audio.rate == 1.25
+            await pilot.press('v')
+            assert a.voice_id == 'zh-female'
+            await app.pop_screen()
+            await app.push_screen(ListenScreen('b'))
+            assert app.audio.rate == 1.0, 'new books start at the default rate'
+            assert app.screen.voice_gender == 'male'
+            assert app.screen.voice_id == ''
+            await pilot.press('minus')
+            await app.pop_screen()
+            await app.push_screen(ListenScreen('a'))
+            assert app.audio.rate == 1.25
+            assert app.screen.voice_gender == 'female'
+            assert app.screen.voice_id == 'zh-female'
+        app = LectorApp(theme='night')
+        async with app.run_test():
+            await app.push_screen(ListenScreen('b'))
+            assert app.audio.rate == 0.75, 'book settings survive client restart'
+
+    asyncio.run(scenario())

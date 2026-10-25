@@ -80,3 +80,21 @@ def test_api_client_has_a_bundled_ca_file():
     from pathlib import Path
 
     assert Path(certifi.where()).is_file()
+
+
+def test_progress_and_voice_preferences_preserve_each_other_across_screen_snapshots(tmp_path):
+    from lector_tui.config import ProgressStore
+
+    path = tmp_path / "progress.json"
+    reader = ProgressStore.load(path)
+    listen = ProgressStore.load(path)
+    listen.set_preference("a", "rate", 1.75)
+    listen.set_preference("a", "voice_id", "zh-female")
+    assert ProgressStore.load(path).get("a") is None
+    reader.set("a", "c1", "c1.b0.s0", percent=0.2)
+    listen.set_preference("a", "gender", "female")
+    again = ProgressStore.load(path)
+    assert again.get("a")["chapter_id"] == "c1"
+    assert again.percent("a") == 0.2
+    assert again.preferences("a") == {"rate": 1.75, "voice_id": "zh-female", "gender": "female"}
+    assert again.preferences("b") == {}

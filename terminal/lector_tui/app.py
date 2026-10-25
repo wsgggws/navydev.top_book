@@ -360,7 +360,7 @@ class LectorApp(ImageApp):
     def action_help(self) -> None:
         """Show the key bindings."""
         self.notify(
-            "hjkl 移动 · Space/p 播放暂停 · r 重播 · +/- 倍速 · / 搜索 · [ ] 换章 · t 目录 · f 全屏 · m 主题 · q 返回",
+            "hjkl 移动 · Space/p 播放暂停 · r 重播 · +/- 倍速 · v 男女声 · / 搜索 · [ ] 换章 · t 目录 · f 全屏 · m 主题 · q 返回",
             title="快捷键",
             timeout=8,
         )

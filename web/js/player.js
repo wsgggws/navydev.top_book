@@ -24,7 +24,11 @@ export class Player {
     this.onState = null;
     this.onError = null;
     this._pending = null;
+    this._generation = 0;
 
+    this.audio.addEventListener('loadedmetadata', () => {
+      this.audio.playbackRate = this.rate;
+    });
     this.audio.addEventListener('ended', () => this._advance());
     this.audio.addEventListener('play', () => {
       this._setPlaying(true);
@@ -49,6 +53,7 @@ export class Player {
 
   setRate(value) {
     state.setSetting('rate', value);
+    this.audio.defaultPlaybackRate = this.rate;
     this.audio.playbackRate = this.rate;
   }
 
@@ -76,7 +81,7 @@ export class Player {
    * switching books would replay the previous book's audio.
    */
   _key(sentenceId) {
-    return `${state.book ? state.book.book_id : ''}|${sentenceId}`;
+    return `${state.book?.book_id || ''}|${sentenceId}|${this.voiceId}|${this.rateParam}`;
   }
 
   /** Fetch the audio of a sentence, reusing the blob when it is known. */
@@ -100,6 +105,10 @@ export class Player {
     }
     const blob = await response.blob();
     const url = URL.createObjectURL(blob);
+    if (key !== this._key(sentenceId)) {
+      URL.revokeObjectURL(url);
+      throw new DOMException('播放配置已切换', 'AbortError');
+    }
     this.blobUrls.set(key, url);
     return url;
   }
@@ -118,12 +127,15 @@ export class Player {
   /** Play one sentence from the beginning. */
   async play(sentenceId, { fromWord = null } = {}) {
     if (!state.book || !sentenceId) return;
+    const generation = ++this._generation;
+    this.audio.pause();
     this.sentenceId = sentenceId;
     try {
       const [url, wordsPayload] = await Promise.all([
         this._fetchAudio(sentenceId),
         this._fetchWords(sentenceId),
       ]);
+      if (generation !== this._generation) return;
       this.words = wordsPayload.words || [];
       this.granularity = wordsPayload.granularity || 'sentence';
       // 先把词边界铺到句子上，再开始播。
@@ -131,14 +143,16 @@ export class Player {
       // 高亮会错位 —— 加速时尤其明显。
       if (this.onSentence) this.onSentence(sentenceId, this.words, this.granularity);
       this.audio.src = url;
+      this.audio.defaultPlaybackRate = this.rate;
       this.audio.playbackRate = this.rate;
       if (fromWord !== null && this.granularity === 'word') {
         const word = this.words[fromWord];
         if (word) this.audio.currentTime = Math.max(0, word.start);
       }
       await this.audio.play();
-      this.prefetchNext();
+      if (generation === this._generation) this.prefetchNext();
     } catch (error) {
+      if (generation !== this._generation || error.name === 'AbortError') return;
       this._setPlaying(false);
       if (this.onError) this.onError(error.message || '播放失败', error.code);
     }
@@ -194,6 +208,7 @@ export class Player {
   }
 
   stop() {
+    this._generation += 1;
     this.audio.pause();
     this.audio.removeAttribute('src');
     this._setPlaying(false);
@@ -210,7 +225,8 @@ export class Player {
       return;
     }
     const gap = (state.settings.gap || 0) * 1000;
-    const go = () => this.play(next.id);
+    const generation = this._generation;
+    const go = () => { if (generation === this._generation) this.play(next.id); };
     if (gap > 0) setTimeout(go, gap);
     else go();
   }

@@ -114,11 +114,17 @@ class ApiClient:
     def get_timeline(self, book_id: str, chapter_id: str) -> dict:
         return self.request(f"/books/{book_id}/chapters/{chapter_id}/timeline")
 
-    def audio_url(self, book_id: str, sentence_id: str) -> str:
-        return f"{self.base_url.rstrip('/')}/api/v1/books/{book_id}/audio/{sentence_id}.mp3"
+    def audio_url(self, book_id: str, sentence_id: str, *, voice_id: str = "", rate: str = "+0%") -> str:
+        params = {"voice_id": voice_id} if voice_id else {}
+        if rate != "+0%":
+            params["rate"] = rate
+        return self._url(f"/books/{book_id}/audio/{quote(sentence_id)}.mp3", params)
 
-    def get_words(self, book_id: str, sentence_id: str) -> dict:
-        return self.request(f"/books/{book_id}/audio/{quote(sentence_id)}.words")
+    def get_words(self, book_id: str, sentence_id: str, *, voice_id: str = "", rate: str = "+0%") -> dict:
+        params = {"voice_id": voice_id} if voice_id else {}
+        if rate != "+0%":
+            params["rate"] = rate
+        return self.request(f"/books/{book_id}/audio/{quote(sentence_id)}.words", params=params)
 
     def fetch_media(self, book_id: str, path: str) -> bytes:
         """Download one image embedded in an EPUB."""
@@ -139,9 +145,9 @@ class ApiClient:
         with urlopen(request, timeout=60, context=self._ssl_context()) as response:
             return _read_image(response)
 
-    def download_audio(self, book_id: str, sentence_id: str, target: str) -> str:
+    def download_audio(self, book_id: str, sentence_id: str, target: str, *, voice_id: str = "", rate: str = "+0%") -> str:
         """Download one sentence tile to a local file."""
-        request = Request(self.audio_url(book_id, sentence_id), headers=self._headers())
+        request = Request(self.audio_url(book_id, sentence_id, voice_id=voice_id, rate=rate), headers=self._headers())
         with urlopen(request, timeout=60, context=self._ssl_context()) as response:
             data = response.read()
         with open(target, "wb") as handle:

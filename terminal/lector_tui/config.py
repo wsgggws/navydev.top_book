@@ -108,7 +108,7 @@ class ProgressStore:
     def get(self, book_id: str) -> dict | None:
         """这本书上次读到哪。"""
         entry = self.data.get(book_id)
-        return dict(entry) if isinstance(entry, dict) else None
+        return dict(entry) if isinstance(entry, dict) and entry.get("chapter_id") else None
 
     def set(
         self,
@@ -119,6 +119,7 @@ class ProgressStore:
         percent: float | None = None,
     ) -> None:
         """记下位置；百分比由调用方算了才传。"""
+        self.data = type(self).load(self.path).data
         previous = self.data.get(book_id) or {}
         if percent is None:
             same = (
@@ -127,11 +128,25 @@ class ProgressStore:
             )
             percent = previous.get("percent", 0.0) if same else 0.0
         self.data[book_id] = {
+            **previous,
             "chapter_id": chapter_id,
             "sentence_id": sentence_id,
             "word_index": word_index,
             "percent": percent,
         }
+        self.save()
+
+    def preferences(self, book_id: str) -> dict:
+        """朗读配置与位置放在同一本书下，互相更新时保留另一部分。"""
+        entry = self.data.get(book_id) or {}
+        prefs = entry.get("preferences", {})
+        return dict(prefs) if isinstance(prefs, dict) else {}
+
+    def set_preference(self, book_id: str, key: str, value: object) -> None:
+        # 阅读屏和听书屏各持有一份快照；写之前读最新文件，避免旧屏覆盖新配置。
+        self.data = type(self).load(self.path).data
+        entry = self.data.setdefault(book_id, {})
+        entry["preferences"] = {**self.preferences(book_id), key: value}
         self.save()
 
     def percent(self, book_id: str) -> float:

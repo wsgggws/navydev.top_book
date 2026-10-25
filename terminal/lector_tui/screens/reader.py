@@ -8,6 +8,7 @@ between them never loses the place.
 from __future__ import annotations
 
 from io import BytesIO
+from hashlib import sha256
 
 from rich.style import Style
 from rich.text import Text
@@ -826,6 +827,7 @@ class ListenScreen(BaseReaderScreen):
         Binding("equals", "faster", "加速"),
         Binding("minus", "slower", "减速"),
         Binding("0", "reset_rate", "原速"),
+        Binding("v", "toggle_voice", "男/女声"),
     ]
 
     def __init__(self, book_id: str, chapter_id: str | None = None, sentence_index: int = 0) -> None:
@@ -836,6 +838,8 @@ class ListenScreen(BaseReaderScreen):
         self._timer = None
         self._clock = None
         self._last_word_index: int | None = None
+        self.voice_id = ""
+        self.voice_gender = "male"
 
     def compose(self) -> ComposeResult:
         with Vertical():
@@ -853,6 +857,11 @@ class ListenScreen(BaseReaderScreen):
         # 焦点默认在正文：h/j/k/l 是读的时候最常用的键。
         # 按 Tab 切到目录，目录里 j/k/l 才是目录自己的键。
         self.query_one("#text-pane", VerticalScroll).focus()
+        prefs = self.progress.preferences(self.book_id)
+        rate = prefs.get("rate", 1.0)
+        self.app.audio.rate = rate if isinstance(rate, (int, float)) and 0.75 <= rate <= 2.0 else 1.0
+        self.voice_id = str(prefs.get("voice_id") or "")
+        self.voice_gender = prefs.get("gender", "male")
         self.load_book()
         if self.start_chapter and self.chapter and self.chapter.get("chapter_id") != self.start_chapter:
             self.load_chapter(self.start_chapter)
@@ -890,11 +899,42 @@ class ListenScreen(BaseReaderScreen):
 
     def _set_rate(self, rate: float) -> None:
         self.app.audio.rate = max(0.75, min(2.0, round(rate, 2)))
+        self.progress.set_preference(self.book_id, "rate", self.app.audio.rate)
         self.notify(f"倍速：{self.app.audio.rate:.2f}×", title="听书")
         if self.playing:
             self._play_current()
         else:
             self.update_audio_panel()
+
+    def action_toggle_voice(self) -> None:
+        """只在这本书的语言里切换男女声，并保存到终端本地。"""
+        gender = "female" if self.voice_gender == "male" else "male"
+        family = (self.book or {}).get("language", "zh").split("-")[0].lower()
+        try:
+            voices = self.app.api.voices().get("voices", [])
+            candidates = [v for v in voices if v.get("locale", "").split("-")[0].lower() == family
+                          and v.get("gender") == gender]
+            preferred = "en-US" if family == "en" else "zh-CN"
+            voice = next((v for v in candidates if v.get("locale") == preferred),
+                         candidates[0] if candidates else None)
+            if not voice:
+                raise ValueError("当前语言没有可用的相应音色")
+        except Exception as exc:  # noqa: BLE001 - 音色服务失败不改变已有配置
+            self.notify(f"无法切换音色：{exc}", severity="error")
+            return
+        self.voice_gender = gender
+        self.voice_id = voice["voice_id"]
+        self.progress.set_preference(self.book_id, "gender", gender)
+        self.progress.set_preference(self.book_id, "voice_id", self.voice_id)
+        if self.playing:
+            self._play_current()
+        else:
+            self.update_audio_panel()
+
+    @property
+    def synthesis_rate(self) -> str:
+        language = (self.book or {}).get("language", "").split("-")[0].lower()
+        return "-8%" if language == "en" else "+0%"
 
     def start_playback(self) -> None:
         """Play the current sentence and continue with the next ones."""
@@ -904,6 +944,11 @@ class ListenScreen(BaseReaderScreen):
         self.playing = True
         self.update_audio_panel()
         self._play_current()
+
+    def _audio_target(self, sentence_id: str):
+        # 预取和播放共用路径；换书或换音色不会拿到上一份媒体。
+        key = "|".join((self.app.api.base_url, self.book_id, sentence_id, self.voice_id, self.synthesis_rate))
+        return self.app.audio.tempdir() / f"{sha256(key.encode()).hexdigest()}.mp3"
 
     def _play_current(self) -> None:
         from lector_tui.audio import Clock
@@ -917,14 +962,17 @@ class ListenScreen(BaseReaderScreen):
             self.stop_playback()
             return
         try:
-            target = self.app.audio.tempdir() / f"{sentence['id'].replace('.', '_')}.mp3"
-            self.app.api.download_audio(self.book_id, sentence["id"], str(target))
+            target = self._audio_target(sentence["id"])
+            if not target.exists():
+                self.app.api.download_audio(self.book_id, sentence["id"], str(target),
+                                            voice_id=self.voice_id, rate=self.synthesis_rate)
         except Exception as exc:  # noqa: BLE001
             self.notify(f"音频不可用：{exc}", title="错误", severity="error")
             self.stop_playback()
             return
         try:
-            payload = self.app.api.get_words(self.book_id, sentence["id"])
+            payload = self.app.api.get_words(self.book_id, sentence["id"],
+                                             voice_id=self.voice_id, rate=self.synthesis_rate)
         except Exception:  # noqa: BLE001
             payload = {"words": [], "granularity": "sentence"}
         self.words = payload.get("words", [])
@@ -961,11 +1009,12 @@ class ListenScreen(BaseReaderScreen):
         following = sentences[index + 1] if index + 1 < len(sentences) else None
         if following is None:
             return
-        target = self.app.audio.tempdir() / f"{following['id'].replace('.', '_')}.mp3"
+        target = self._audio_target(following["id"])
         if target.exists():
             return
         try:
-            self.app.api.download_audio(self.book_id, following["id"], str(target))
+            self.app.api.download_audio(self.book_id, following["id"], str(target),
+                                        voice_id=self.voice_id, rate=self.synthesis_rate)
         except Exception:  # noqa: BLE001 - 预取失败不打扰用户
             pass
 
@@ -1032,7 +1081,8 @@ class ListenScreen(BaseReaderScreen):
         bar = "▓" * filled + "░" * (bar_width - filled)
         text = (
             f" {marker} ⏮ ⏭  {chapter_title} · {elapsed:.1f}s · "
-            f"{self.app.audio.rate:.1f}× · {self.app.audio.backend or '无播放器'}\n"
+            f"{self.app.audio.rate:.2f}× · {'女声' if self.voice_gender == 'female' else '男声'} · "
+            f"{self.app.audio.backend or '无播放器'}\n"
             f" {bar}\n"
             f" 当前句：{preview}"
         )

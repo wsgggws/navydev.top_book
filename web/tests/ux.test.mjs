@@ -48,7 +48,7 @@ after(async () => {
   await new Promise(resolve => server?.close(resolve));
 });
 
-async function openPage(t, width = 1280, height = 800, options = {}) {
+async function openPage(t, width = 1280, height = 800, options = {}, catalog = [book]) {
   const context = await browser.newContext({ viewport: { width, height }, ...options });
   t.after(() => context.close());
   const page = await context.newPage();
@@ -58,10 +58,33 @@ async function openPage(t, width = 1280, height = 800, options = {}) {
   await page.route('**/api/v1/**', async route => {
     const path = new URL(route.request().url()).pathname.replace('/api/v1', '');
     let payload;
-    if (path === '/meta') payload = { default_voice: 'test-voice', default_voices: { zh: 'test-voice' } };
-    else if (path === '/tts/voices') payload = { voices: [{ voice_id: 'test-voice', locale: 'zh-CN', name: '测试音色', gender: 'male' }] };
-    else if (path === '/books') payload = [book];
-    else if (path === '/books/test-book') payload = { book };
+    if (path.endsWith('.mp3')) {
+      // Real playable PCM media; no speech service or network involved.
+      const samples = 8000 * 12;
+      const wav = Buffer.alloc(44 + samples * 2);
+      wav.write('RIFF'); wav.writeUInt32LE(36 + samples * 2, 4);
+      wav.write('WAVEfmt ', 8); wav.writeUInt32LE(16, 16);
+      wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
+      wav.writeUInt32LE(8000, 24); wav.writeUInt32LE(16000, 28);
+      wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34);
+      wav.write('data', 36); wav.writeUInt32LE(samples * 2, 40);
+      await route.fulfill({ body: wav, contentType: 'audio/wav' });
+      return;
+    }
+    if (path.endsWith('.words')) {
+      await route.fulfill({ json: { words: [], granularity: 'sentence', duration: 12 } });
+      return;
+    }
+    if (path === '/meta') payload = { default_voice: 'test-voice', default_voices: { zh: 'test-voice', en: 'en-male' } };
+    else if (path === '/tts/voices') payload = { voices: [
+      { voice_id: 'test-voice', locale: 'zh-CN', name: '测试男声', gender: 'male' },
+      { voice_id: 'test-female', locale: 'zh-CN', name: '测试女声', gender: 'female' },
+      { voice_id: 'en-male', locale: 'en-US', name: 'American male', gender: 'male' },
+      { voice_id: 'en-female', locale: 'en-US', name: 'American female', gender: 'female' },
+      { voice_id: 'en-gb-female', locale: 'en-GB', name: 'British female', gender: 'female' },
+    ] };
+    else if (path === '/books') payload = catalog;
+    else if (catalog.some(item => path === `/books/${item.book_id}`)) payload = { book: catalog.find(item => path === `/books/${item.book_id}`) };
     else if (path.endsWith('/toc')) payload = { toc: [{ id: 'toc0', title: chapter.title, chapter_id: 'c0', children: [] }] };
     else if (path.endsWith('/chapters/c0')) payload = { chapter };
     else if (path.endsWith('/timeline')) payload = { sentences: [] };
@@ -73,7 +96,7 @@ async function openPage(t, width = 1280, height = 800, options = {}) {
     await route.fulfill({ json: payload });
   });
   await page.goto(origin);
-  await expect(page.locator('.card')).toHaveCount(1);
+  await expect(page.locator('.card')).toHaveCount(catalog.length);
   return page;
 }
 
@@ -229,4 +252,125 @@ test('short landscape viewport keeps settings scrollable and hour times fit on m
   await assertHitTarget(page, '#btn-settings-close');
   await page.locator('#btn-settings-close').click();
   await expect(page.locator('#drawer-settings')).toBeHidden();
+});
+
+for (const width of [375, 1280]) {
+  test(`book preferences restore independently after switching and reload at ${width}px`, async t => {
+    const page = await openPage(t, width, 800, { hasTouch: width === 375 },
+      [book, { ...book, book_id: 'second-book', title: 'Second book', language: 'en-US' }]);
+    await page.locator('.card').filter({ hasText: book.title }).click();
+    await expect(page.locator('.sent')).toHaveCount(30);
+    await page.locator('#btn-rate').click();
+    await page.locator('#rate-menu button[data-rate="1.5"]').click();
+    assert.equal(await page.evaluate(() => window.lector.player.audio.playbackRate), 1.5);
+    await page.locator('#btn-settings').click();
+    await page.locator('#s-gender button[data-gender="female"]').click();
+    await expect(page.locator('#s-voice')).toHaveValue('test-female');
+    await page.locator('#btn-settings-close').click();
+    await page.locator('#btn-back').click();
+    await page.locator('.card').filter({ hasText: 'Second book' }).click();
+    await expect(page.locator('.sent')).toHaveCount(30);
+    await expect(page.locator('#btn-rate')).toHaveText('1.00×');
+    assert.equal(await page.evaluate(() => window.lector.player.audio.playbackRate), 1);
+    await page.locator('#btn-settings').click();
+    await expect(page.locator('#s-gender button[data-gender="male"]')).toHaveClass(/is-active/);
+    await expect(page.locator('#s-voice')).toHaveValue('en-male');
+    await page.locator('#s-gender button[data-gender="female"]').click();
+    await page.locator('#s-voice').selectOption('en-gb-female');
+    await page.locator('#btn-settings-close').click();
+    await page.locator('#btn-back').click();
+    await page.locator('.card').filter({ hasText: book.title }).click();
+    await expect(page.locator('#btn-rate')).toHaveText('1.50×');
+    await page.reload();
+    await expect(page.locator('#btn-rate')).toHaveText('1.50×');
+    await page.locator('#btn-settings').click();
+    await expect(page.locator('#s-gender button[data-gender="female"]')).toHaveClass(/is-active/);
+    await expect(page.locator('#s-voice')).toHaveValue('test-female');
+    await page.locator('#btn-settings-close').click();
+    await page.locator('#btn-back').click();
+    await page.locator('.card').filter({ hasText: 'Second book' }).click();
+    await page.locator('#btn-settings').click();
+    await expect(page.locator('#s-voice')).toHaveValue('en-gb-female');
+    await expect(page.locator('#s-rate')).toHaveValue('1');
+
+  });
+}
+
+test('touch selection survives button blur before the synthesized click', async t => {
+  const page = await openPage(t, 375, 800, { hasTouch: true });
+  await openBook(page);
+  await page.locator('#btn-rate').tap();
+  // Safari may blur the focused menu item without focusing the tapped button.
+  await page.locator('#rate-menu button[data-rate="1"]').evaluate(node => node.blur());
+  await page.locator('#rate-menu button[data-rate="1.5"]').tap({ timeout: 1200 });
+  await expect(page.locator('#btn-rate')).toHaveText('1.50×');
+  assert.equal(await page.evaluate(() => window.lector.player.audio.playbackRate), 1.5);
+});
+
+for (const width of [375, 1280]) {
+  test(`native audio keeps selected speed while playing, resuming and changing sentences at ${width}px`, async t => {
+    const page = await openPage(t, width, 800, { hasTouch: width === 375 });
+    await openBook(page);
+    await page.locator('#btn-play').click();
+    await page.waitForFunction(() => window.lector.player.playing && !window.lector.player.audio.paused);
+    if (width === 375) await page.locator('#btn-rate').tap();
+    else await page.locator('#btn-rate').click();
+    await page.locator('#rate-menu button[data-rate="1.75"]').click();
+    const checkRate = async () => {
+      assert.deepEqual(await page.evaluate(() => {
+        const a = window.lector.player.audio;
+        return [a.playbackRate, a.defaultPlaybackRate, a.paused];
+      }), [1.75, 1.75, false]);
+    };
+    await checkRate();
+    const audioSeconds = await page.evaluate(() => window.lector.player.audio.currentTime);
+    await page.waitForTimeout(400);
+    const elapsed = await page.evaluate(() => window.lector.player.audio.currentTime);
+    assert.ok(elapsed - audioSeconds > 0.5, 'native audio clock advances faster than wall time');
+    await page.locator('#btn-play').click();
+    await page.waitForFunction(() => !window.lector.player.playing);
+    await page.locator('#btn-play').click();
+    await page.waitForFunction(() => window.lector.player.playing && !window.lector.player.audio.paused);
+    await checkRate();
+    await page.locator('#btn-next').click();
+    await page.waitForFunction(() => window.lector.player.sentenceId === 'c0.b1.s0' && window.lector.player.playing && !window.lector.player.audio.paused && window.lector.player.audio.readyState >= 2);
+    await checkRate();
+  });
+}
+
+test('existing per-book voice and speed restore without legacy global selection flags', async t => {
+  const page = await openPage(t);
+  await page.evaluate(() => {
+    localStorage.setItem('lector.settings', JSON.stringify({ rate: 2, voiceGender: 'male', voiceTouched: false }));
+    localStorage.setItem('lector.books', JSON.stringify({
+      'test-book': { rate: 1.25, gender: 'female', voiceId: 'test-female' },
+    }));
+  });
+  await page.reload();
+  await openBook(page);
+  await expect(page.locator('#btn-rate')).toHaveText('1.25×');
+  await page.locator('#btn-settings').click();
+  await expect(page.locator('#s-voice')).toHaveValue('test-female');
+  await expect(page.locator('#s-gender button[data-gender="female"]')).toHaveClass(/is-active/);
+});
+
+test('changing gender during playback fetches matching media and word timings instead of reusing old voice', async t => {
+  const page = await openPage(t, 375, 800, { hasTouch: true });
+  const media = [];
+  page.on('request', request => {
+    if (/\/audio\/c0\.b0\.s0\.(mp3|words)/.test(request.url())) media.push(new URL(request.url()));
+  });
+  await openBook(page);
+  await page.locator('#btn-play').click();
+  await page.waitForFunction(() => window.lector.player.playing && !window.lector.player.audio.paused);
+  const originalSrc = await page.evaluate(() => window.lector.player.audio.src);
+  await page.locator('#btn-settings').click();
+  await page.locator('#s-gender button[data-gender="female"]').click();
+  await expect(page.locator('#s-voice')).toHaveValue('test-female');
+  await page.waitForFunction(old => window.lector.player.audio.src !== old && !window.lector.player.audio.paused,
+    originalSrc);
+  for (const ext of ['.mp3', '.words']) {
+    assert.ok(media.some(url => url.pathname.endsWith(ext) && url.searchParams.get('voice_id') === 'test-female'),
+      `${ext} requested with the selected female voice`);
+  }
 });

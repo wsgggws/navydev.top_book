@@ -231,19 +231,14 @@ settings.indent.addEventListener('change', () => {
 settings.gender.addEventListener('click', async (event) => {
   const button = event.target.closest('button[data-gender]');
   if (!button) return;
-  state.settings.voiceGenderTouched = true;
+  state.setSetting('voiceGenderTouched', true);
   state.setSetting('voiceGender', button.dataset.gender);
   // 换了性别，之前挑的音色就不作数了，让它按语言与性别重新挑。
   state.setSetting('voiceId', '');
   state.setSetting('voiceTouched', false);
-  if (state.book) {
-    state.setPref(state.book.book_id, 'gender', button.dataset.gender);
-    state.setPref(state.book.book_id, 'voiceId', '');
-  }
   applySettings();
-  // 等音色列表刷新完再记：这时才知道挑中了哪一个。
   await loadVoices();
-  rememberVoiceChoice();
+  applySettings();
 });
 
 settings.theme.addEventListener('click', (event) => {
@@ -254,9 +249,7 @@ settings.theme.addEventListener('click', (event) => {
   applySettings();
 });
 settings.rate.addEventListener('input', () => {
-  state.setSetting('rate', Number(settings.rate.value));
-  player.setRate(state.settings.rate);
-  if (state.book) state.setPref(state.book.book_id, 'rate', state.settings.rate);
+  player.setRate(Number(settings.rate.value));
   applySettings();
 });
 settings.gap.addEventListener('input', () => {
@@ -265,8 +258,8 @@ settings.gap.addEventListener('input', () => {
 });
 settings.voice.addEventListener('change', () => {
   state.setSetting('voiceId', settings.voice.value);
+  if (player.playing && player.sentenceId) void player.play(player.sentenceId);
   state.setSetting('voiceTouched', true);
-  if (state.book) state.setPref(state.book.book_id, 'voiceId', settings.voice.value);
   dom.btnVoice.textContent = settings.voice.selectedOptions[0]
     ? settings.voice.selectedOptions[0].textContent
     : '—';
@@ -374,6 +367,9 @@ async function openBook(bookId, { chapterId = null, fromRoute = false } = {}) {
       if (state.cursor) reader.clearWords(state.cursor.sentence_id);
     }
     state.book = payload.book;
+    state.restoreBookSettings(bookId);
+    player.setRate(state.settings.rate);
+    applySettings();
     if (!fromRoute) {
       updateUrl(bookId);
       void api.recordOpen(bookId)
@@ -400,23 +396,8 @@ async function openBook(bookId, { chapterId = null, fromRoute = false } = {}) {
     dom.topbarBook.textContent = payload.book.title;
     await loadToc();
 
-    // 这本书自己的音色与倍速：换到别的书再切回来时还在。
-    const prefs = state.prefsFor(bookId);
-    if (prefs.gender) state.settings.voiceGender = prefs.gender;
-    if (typeof prefs.rate === 'number') state.settings.rate = prefs.rate;
-    player.setRate(state.settings.rate);
-    const family = languageFamily(state.book.language);
-    // 自动挑中的旧音色不算用户选择；升级后要能切到新的默认男声。
-    const saved = state.settings.voiceTouched
-      ? state.voices.find((voice) => voice.voice_id === prefs.voiceId)
-      : null;
-    const savedFits = saved
-      && (!family || saved.locale.split('-')[0].toLowerCase() === family);
-    // 记住的音色得是这本书这个语言的；不是就按语言与性别重新挑（空着让
-    // loadVoices 按语言挑，列表与选中项才对得上）。
-    state.settings.voiceId = savedFits ? saved.voice_id : '';
     await loadVoices();
-    rememberVoiceChoice();
+    applySettings();
     // 位置只认本地这一份：网页与终端各记各的，互不影响。
     const local = state.prefsFor(bookId).position;
     const sameChapter = local && (!chapterId || local.chapter_id === chapterId);
@@ -843,7 +824,9 @@ dom.rateMenu.addEventListener('keydown', (event) => {
 });
 
 dom.rateMenu.parentElement.addEventListener('focusout', (event) => {
-  if (!event.currentTarget.contains(event.relatedTarget)) closeRateMenu();
+  // 触摸浏览器可能先 blur（relatedTarget=null），再产生 click。此时由
+  // 外部点击或 Tab 负责关闭，避免按钮在点击前被隐藏。
+  if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget)) closeRateMenu();
 });
 
 dom.rateMenu.addEventListener('click', (event) => {
@@ -851,10 +834,7 @@ dom.rateMenu.addEventListener('click', (event) => {
   if (!button) return;
   event.stopPropagation();
   const value = Number(button.dataset.rate);
-  state.setSetting('rate', value);
   player.setRate(value);
-  // 倍速也是这本书自己的：换书再切回来还是这个速度。
-  if (state.book) state.setPref(state.book.book_id, 'rate', value);
   applySettings();
   closeRateMenu({ restoreFocus: true });
 });
@@ -1069,12 +1049,6 @@ document.addEventListener('keydown', async (event) => {
 /* 启动                                                                */
 /* ------------------------------------------------------------------ */
 
-/** 把当前挑中的音色记到这本书名下。 */
-function rememberVoiceChoice() {
-  if (!state.book || !state.settings.voiceId) return;
-  state.setPref(state.book.book_id, 'voiceId', state.settings.voiceId);
-}
-
 /** 书的语言决定能用哪些音色。 */
 function languageFamily(language) {
   if (!language) return '';
@@ -1093,13 +1067,16 @@ function voicesFor(language) {
   const same = pool.filter(
     (voice) => voice.locale.split('-')[0].toLowerCase() === family,
   );
-  // 没有同语言的就退回全部，总比给不出声音强。
-  return same.length ? same : pool;
+  return same;
 }
 
+let voiceRequest = 0;
 async function loadVoices() {
+  const request = ++voiceRequest;
+  const bookId = state.book?.book_id;
   try {
     const payload = await api.voices();
+    if (request !== voiceRequest || bookId !== state.book?.book_id) return;
     state.voices = payload.voices || [];
     // 中文书只给中文的声音，英文书只给英文的。
     let shown = voicesFor(state.book ? state.book.language : '');
@@ -1119,18 +1096,22 @@ async function loadVoices() {
     const wanted = state.settings.voiceId
       || (state.book ? matchVoice(state.book.language, state.settings.voiceGender) : '')
       || state.defaultVoice;
-    const options = shown.length ? shown : state.voices;
+    const options = shown;
     if (wanted && options.some((voice) => voice.voice_id === wanted)) {
       settings.voice.value = wanted;
     } else if (options.length) {
       settings.voice.value = options[0].voice_id;
     }
-    state.settings.voiceId = settings.voice.value;
+    const previousVoice = state.settings.voiceId;
     state.setSetting('voiceId', settings.voice.value);
+    if (previousVoice !== state.settings.voiceId && player.playing && player.sentenceId) {
+      void player.play(player.sentenceId);
+    }
     dom.btnVoice.textContent = settings.voice.selectedOptions[0]
       ? settings.voice.selectedOptions[0].textContent
       : '—';
   } catch (error) {
+    if (request !== voiceRequest || bookId !== state.book?.book_id) return;
     dom.btnVoice.textContent = '不可用';
   }
 }
