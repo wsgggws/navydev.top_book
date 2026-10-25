@@ -105,14 +105,12 @@ class LectorApp(App):
 
     .book-row {
         height: auto;
-        min-height: 10;
         padding: 1 0;
     }
 
     .book-cover {
         width: 10;
         height: auto;
-        min-height: 10;
         margin-right: 2;
         background: $panel;
     }
@@ -199,6 +197,43 @@ class LectorApp(App):
     .chapter-title {
         text-style: bold;
         color: $accent;
+    }
+
+    .chapter-text {
+        width: 1fr;
+        height: auto;
+    }
+
+    .chapter-title-block {
+        width: 1fr;
+        height: auto;
+        margin-bottom: 1;
+    }
+
+    .chapter-block {
+        width: 1fr;
+        height: auto;
+        margin-bottom: 1;
+    }
+
+    .chapter-image-block {
+        width: 1fr;
+        height: auto;
+        margin: 1 0 2 0;
+    }
+
+    .chapter-image {
+        width: 100%;
+        height: auto;
+        margin-bottom: 1;
+        background: $panel;
+    }
+
+    .chapter-image-loading,
+    .chapter-image-caption {
+        width: 1fr;
+        height: auto;
+        color: $text-muted;
     }
 
     .sentence-current {

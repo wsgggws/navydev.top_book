@@ -64,9 +64,9 @@ LECTOR_THEME=solarized-dark lector
 运行中按 `m` 循环切换主题，选择会写入 `~/.config/lector/reader.json`。
 
 正文使用窄长布局：默认最大 72 列、最多 34 行，左右保留留白。EPUB 内嵌图片
-会异步加载；支持 Sixel / Kitty 图形协议的终端（WezTerm、iTerm2、Kitty 等）
-直接绘制高分辨率图片，其余终端降级为真彩色半块字符。书架封面同样异步加载，
-并优先使用终端原生图片协议显示。
+会异步加载为独立的图片组件；支持 Sixel / Kitty 图形协议的终端（WezTerm、
+iTerm2、Kitty 等）直接绘制高分辨率图片，其余终端降级为真彩色半块字符。
+书架封面使用同样的渲染方式，并带有稳定的 2:3 加载占位图。
 
 听书时当前句使用加粗下划线，当前词使用反色加粗，已读词变暗，不依赖背景色，
 因此在浅色和深色终端主题下都能看清。
@@ -95,10 +95,16 @@ LECTOR_THEME=solarized-dark lector
 ```text
 ~/.config/lector/reader.json     URL、token、主题
 ~/.config/lector/progress.json   终端自己的阅读位置
+~/Library/Caches/lector/images/  macOS 图片缓存
+~/.cache/lector/images/          Linux 图片缓存
 ```
 
 环境变量 `LECTOR_URL`、`LECTOR_TOKEN`、`LECTOR_THEME` 优先于配置文件。
 网页端和终端端的阅读位置完全独立。
+
+图片按书籍和资源路径做内容寻址缓存，默认最多占用 512 MB，超过后自动淘汰
+最久未使用的图片。可以用 `LECTOR_CACHE_DIR` 指定其他缓存目录。文字高亮只更新
+当前段落，不会重建图片组件，因此滚动和听书时图片不会消失。
 
 ## 开发
 

@@ -7,11 +7,11 @@ between them never loses the place.
 
 from __future__ import annotations
 
-from typing import Any
+from io import BytesIO
 
-from rich.console import Group
 from rich.style import Style
 from rich.text import Text
+from textual_image.widget import Image as TerminalImage
 
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -20,9 +20,9 @@ from textual.screen import Screen
 from textual.events import Key
 from textual.widgets import Footer, Input, ListItem, ListView, Static
 
+from lector_tui.cache import ImageCache
 from lector_tui.config import ProgressStore
-from lector_tui.images import render_chapter_image
-from lector_tui.widgets import VimListView
+from lector_tui.widgets import ImageScroll, VimListView
 
 #: How many columns the directory takes.
 TOC_WIDTH = 30
@@ -57,8 +57,8 @@ def word_offsets(sentence_text: str, words: list[dict]) -> list[tuple[int, int, 
     return offsets
 
 
-class ChapterText(Static):
-    """The text of the current chapter."""
+class ChapterBlock(Static):
+    """One paragraph, heading, rule or list group from a chapter."""
 
     COMPONENT_CLASSES = {
         "chapter-title",
@@ -67,106 +67,157 @@ class ChapterText(Static):
         "word-now",
     }
 
-    def __init__(self) -> None:
-        super().__init__()
-        self.chapter: dict | None = None
-        self.current_sentence: str | None = None
-        self.words: list[dict] = []
-        self.word_index: int = -1
-        self.images: dict[str, Any] = {}
-
-    def set_chapter(self, chapter: dict) -> None:
-        self.chapter = chapter
-        self.images = {}
-        self.refresh_content()
-
-    def set_images(self, images: dict[str, Any]) -> None:
-        self.images = images
-        self.refresh_content()
-
-    def set_cursor(self, sentence_id: str) -> None:
-        self.current_sentence = sentence_id
-        self.words = []
-        self.word_index = -1
-        self.refresh_content()
-
-    def set_words(self, words: list[dict], word_index: int) -> None:
-        self.words = words
-        self.word_index = word_index
-        self.refresh_content()
+    def __init__(self, chapter: "ChapterText", blocks: list[dict], kind: str) -> None:
+        super().__init__(classes="chapter-block")
+        self.chapter_view = chapter
+        self.blocks = blocks
+        self.kind = kind
 
     def refresh_content(self) -> None:
         self.update(self.build())
 
-    # -- styles ----------------------------------------------------------
     def _style(self, name: str) -> Style:
-        """The Rich style behind a component class."""
         try:
             return self.get_component_styles(name).rich_style
         except Exception:  # noqa: BLE001 - a missing class must not break the text
             return Style()
 
-    def build(self) -> Group:
-        """The chapter as rich text, with the cursor line on the current sentence."""
-        parts: list[Any] = []
+    def build(self) -> Text:
+        """Render this block with the current sentence and word highlight."""
         text = Text()
-        if not self.chapter:
-            return Group()
-        title_style = self._style("chapter-title")
+        if self.kind == "hr":
+            return Text("─" * 40 + "\n")
         current_style = self._style("sentence-current")
         read_style = self._style("word-read")
         now_style = self._style("word-now")
-        text.append(f"{self.chapter.get('title', '')}\n", style=title_style)
+        for block in self.blocks:
+            if block.get("type") == "li":
+                for sentence in block.get("sentences", []):
+                    text.append("  • ", style=Style(dim=True))
+                    if sentence["id"] == self.chapter_view.current_sentence:
+                        self.chapter_view._append_sentence(
+                            text, sentence, current_style, read_style, now_style
+                        )
+                    else:
+                        text.append(sentence["text"])
+                continue
+            heading = (
+                Style(bold=True)
+                if block.get("type", "p").startswith("h")
+                else Style()
+            )
+            for sentence in block.get("sentences", []):
+                if sentence["id"] == self.chapter_view.current_sentence:
+                    self.chapter_view._append_sentence(
+                        text, sentence, current_style, read_style, now_style
+                    )
+                else:
+                    text.append(sentence["text"], style=heading)
         text.append("\n")
-        blocks = self._without_repeated_title()
+        return text
+
+
+class ChapterText(Vertical):
+    """The current chapter, built from text blocks and native image widgets."""
+
+    def __init__(self) -> None:
+        super().__init__(classes="chapter-text")
+        self.chapter: dict | None = None
+        self.current_sentence: str | None = None
+        self.words: list[dict] = []
+        self.word_index: int = -1
+        self.images: dict[str, bytes] = {}
+        self._sentence_widgets: dict[str, ChapterBlock] = {}
+
+    def compose(self) -> ComposeResult:
+        self._sentence_widgets = {}
+        if not self.chapter:
+            return
+        yield Static(
+            self.chapter.get("title", ""),
+            classes="chapter-title chapter-title-block",
+        )
+        blocks = self._blocks()
         index = 0
         while index < len(blocks):
             block = blocks[index]
-            if block.get("type") == "img":
-                if text.plain:
-                    parts.append(text)
-                    text = Text()
-                preview = self.images.get(block.get("id", ""))
-                if preview is not None:
-                    parts.append(preview)
-                if block.get("alt"):
-                    parts.append(
-                        Text(f"[图：{block['alt']}]\n", style=Style(dim=True))
-                    )
-                elif preview is None:
-                    parts.append(Text("[图片加载中…]\n", style=Style(dim=True)))
-                parts.append(Text("\n"))
+            block_type = str(block.get("type", "p"))
+            if block_type == "img":
+                with Vertical(classes="chapter-image-block"):
+                    data = self.images.get(str(block.get("id", "")))
+                    if data:
+                        yield TerminalImage(
+                            image=BytesIO(data),
+                            classes="chapter-image",
+                        )
+                    else:
+                        yield Static(
+                            "图片加载中…",
+                            classes="chapter-image-loading",
+                        )
+                    if block.get("alt"):
+                        yield Static(
+                            f"图：{block['alt']}",
+                            classes="chapter-image-caption",
+                        )
                 index += 1
                 continue
-            if block.get("type") == "hr":
-                text.append("─" * 40 + "\n")
-                index += 1
-                continue
-            if block.get("type") == "li":
-                # 列表项成组输出，项目符号才不会跑到行外。
+            if block_type == "li":
+                group = []
                 while index < len(blocks) and blocks[index].get("type") == "li":
-                    for sentence in blocks[index].get("sentences", []):
-                        text.append("  • ", style=Style(dim=True))
-                        if sentence["id"] == self.current_sentence:
-                            self._append_sentence(
-                                text, sentence, current_style, read_style, now_style
-                            )
-                        else:
-                            text.append(sentence["text"])
+                    group.append(blocks[index])
                     index += 1
-                text.append("\n")
+                yield self._make_text_widget(group, "li")
                 continue
-            heading = Style(bold=True) if block.get("type", "p").startswith("h") else Style()
-            for sentence in block.get("sentences", []):
-                if sentence["id"] == self.current_sentence:
-                    self._append_sentence(text, sentence, current_style, read_style, now_style)
-                else:
-                    text.append(sentence["text"], style=heading)
-            text.append("\n")
+            elif block_type == "hr":
+                widget = self._make_text_widget([block], "hr")
+            else:
+                widget = self._make_text_widget([block], block_type)
+            yield widget
             index += 1
-        if text.plain:
-            parts.append(text)
-        return Group(*parts)
+
+    def _blocks(self) -> list[dict]:
+        return self._without_repeated_title()
+
+    def _make_text_widget(self, blocks: list[dict], kind: str) -> ChapterBlock:
+        widget = ChapterBlock(self, blocks, kind)
+        for block in blocks:
+            for sentence in block.get("sentences", []):
+                self._sentence_widgets[str(sentence["id"])] = widget
+        return widget
+
+    def set_chapter(self, chapter: dict) -> None:
+        self.chapter = chapter
+        self.images = {}
+        self.refresh(recompose=True)
+
+    def set_images(self, images: dict[str, bytes]) -> None:
+        self.images = images
+        self.refresh(recompose=True)
+
+    def set_cursor(self, sentence_id: str) -> None:
+        previous = self.current_sentence
+        self.current_sentence = sentence_id
+        self.words = []
+        self.word_index = -1
+        for key in {previous, sentence_id}:
+            if key:
+                self._refresh_sentence(key)
+
+    def set_words(self, words: list[dict], word_index: int) -> None:
+        self.words = words
+        self.word_index = word_index
+        if self.current_sentence:
+            self._refresh_sentence(self.current_sentence)
+
+    def _refresh_sentence(self, sentence_id: str) -> None:
+        widget = self._sentence_widgets.get(sentence_id)
+        if widget is not None:
+            widget.refresh_content()
+
+    def widget_for_sentence(self, sentence_id: str) -> ChapterBlock | None:
+        """The text widget that owns a sentence."""
+        return self._sentence_widgets.get(sentence_id)
 
     def _without_repeated_title(self) -> list[dict]:
         """The chapter title is already on top — do not repeat it."""
@@ -276,7 +327,7 @@ class BaseReaderScreen(Screen):
         self._hits: list[dict] = []
         self._hit_index = -1
         self._pane_mode = "toc"
-        self.image_cache: dict[str, Any] = {}
+        self._image_store = ImageCache()
 
     # -- layout ----------------------------------------------------------
     def compose(self) -> ComposeResult:
@@ -284,7 +335,7 @@ class BaseReaderScreen(Screen):
             with Horizontal(id="reader-body"):
                 yield VimListView(id="toc-pane")
                 with Vertical(id="text-area"):
-                    yield VerticalScroll(ChapterText(), id="text-pane")
+                    yield ImageScroll(ChapterText(), id="text-pane")
             yield Input(placeholder="搜索全书…（回车确认，Esc 取消）", id="search-input")
             yield Static("", id="status-bar")
             yield Footer()
@@ -373,21 +424,20 @@ class BaseReaderScreen(Screen):
             return
 
         def worker() -> None:
-            previews: dict[str, Any] = {}
+            previews: dict[str, bytes] = {}
             for block in blocks:
                 src = str(block["src"])
-                key = f"{self.book_id}:{src}"
-                preview = self.image_cache.get(key)
-                if preview is None:
+                cache_name = f"media:{src}"
+                data = self._image_store.get(self.book_id, cache_name)
+                if data is None:
                     try:
                         data = self.app.api.fetch_media(self.book_id, src)
-                        preview = render_chapter_image(data)
                     except Exception:  # noqa: BLE001 - one bad image cannot break reading
-                        preview = None
-                    if preview is not None:
-                        self.image_cache[key] = preview
-                if preview is not None:
-                    previews[str(block["id"])] = preview
+                        data = None
+                    if data is not None:
+                        self._image_store.put(self.book_id, cache_name, data)
+                if data is not None:
+                    previews[str(block["id"])] = data
             try:
                 self.app.call_from_thread(self._apply_chapter_images, chapter_id, previews)
             except Exception:  # noqa: BLE001 - the screen may already be closed
@@ -395,7 +445,7 @@ class BaseReaderScreen(Screen):
 
         self.run_worker(worker, group="chapter-images", exclusive=True, thread=True)
 
-    def _apply_chapter_images(self, chapter_id: str, previews: dict[str, Any]) -> None:
+    def _apply_chapter_images(self, chapter_id: str, previews: dict[str, bytes]) -> None:
         if not self.chapter or self.chapter.get("chapter_id") != chapter_id:
             return
         try:
@@ -431,18 +481,18 @@ class BaseReaderScreen(Screen):
         self.remember_position()
         self.schedule_percent()
 
-    def scroll_to_cursor(self, center: bool = False) -> None:
-        """Keep the current sentence visible."""
+    def scroll_to_cursor(self, center: bool = False, retry: bool = True) -> None:
+        """Keep the current sentence visible, including after images."""
         pane = self.query_one("#text-pane", VerticalScroll)
-        # Count the lines before the current sentence to scroll roughly there.
-        offset = 0
-        for sentence in self.sentences[: self.sentence_index]:
-            offset += max(1, len(sentence["text"]) // 60 + 1)
-        if center:
-            offset = max(0, offset - self._page_size() // 2)
-        else:
-            offset = max(0, offset - 3)
-        pane.scroll_to(y=offset, animate=False)
+        sentence = self.current_sentence
+        if sentence is None:
+            return
+        widget = self.query_one(ChapterText).widget_for_sentence(sentence["id"])
+        if widget is None:
+            if retry:
+                self.call_after_refresh(self.scroll_to_cursor, center, False)
+            return
+        pane.scroll_to_widget(widget, animate=False, center=center)
 
     def update_status(self) -> None:
         """The status line at the bottom."""
@@ -780,7 +830,7 @@ class ListenScreen(BaseReaderScreen):
             with Horizontal(id="reader-body"):
                 yield VimListView(id="toc-pane")
                 with Vertical(id="text-area"):
-                    yield VerticalScroll(ChapterText(), id="text-pane")
+                    yield ImageScroll(ChapterText(), id="text-pane")
             yield Input(placeholder="搜索全书…（回车确认，Esc 取消）", id="search-input")
             yield Static("", id="audio-panel")
             yield Static("", id="status-bar")

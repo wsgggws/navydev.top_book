@@ -15,7 +15,9 @@ from textual.screen import Screen
 from textual.widgets import Footer, Input, ListItem, Static
 from textual_image.widget import Image as TerminalImage
 
+from lector_tui.cache import ImageCache
 from lector_tui.config import ProgressStore
+from lector_tui.images import placeholder_cover
 from lector_tui.widgets import VimListView
 
 from lector_tui.screens.reader import ReaderScreen
@@ -32,7 +34,10 @@ class BookItem(ListItem):
     def compose(self) -> ComposeResult:
         book = self.book
         with Horizontal(classes="book-row"):
-            yield TerminalImage(classes="book-cover")
+            yield TerminalImage(
+                image=BytesIO(placeholder_cover()),
+                classes="book-cover",
+            )
             with Vertical(classes="book-info"):
                 yield Static(book["title"], classes="book-title")
                 yield Static(
@@ -66,7 +71,7 @@ class LibraryScreen(Screen):
     def __init__(self) -> None:
         super().__init__()
         self._books: list[dict] = []
-        self._cover_cache: dict[str, bytes] = {}
+        self._image_cache = ImageCache()
 
     def compose(self) -> ComposeResult:
         with Vertical():
@@ -120,13 +125,14 @@ class LibraryScreen(Screen):
                 book_id = book["book_id"]
                 if not book.get("cover_url"):
                     continue
-                data = self._cover_cache.get(book_id)
+                cache_name = f"cover:{book['cover_url']}"
+                data = self._image_cache.get(book_id, cache_name)
                 if data is None:
                     try:
                         data = self.app.api.fetch_cover(book_id)
                     except Exception:  # noqa: BLE001 - fall back to a blank cover
                         continue
-                    self._cover_cache[book_id] = data
+                    self._image_cache.put(book_id, cache_name, data)
                 try:
                     self.app.call_from_thread(item.set_cover, data)
                 except Exception:  # noqa: BLE001 - the shelf may have been closed

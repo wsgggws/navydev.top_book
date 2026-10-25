@@ -10,7 +10,7 @@ from __future__ import annotations
 from io import BytesIO
 from typing import Any
 
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import Image, ImageDraw, ImageOps, UnidentifiedImageError
 from rich.style import Style
 from rich.text import Text
 from textual_image.renderable import (
@@ -18,6 +18,17 @@ from textual_image.renderable import (
     Image as AutoImage,
     UnicodeImage,
 )
+
+
+def placeholder_cover(width: int = 200, height: int = 300) -> bytes:
+    """A neutral 2:3 cover used while the real image is loading."""
+    image = Image.new("RGB", (width, height), "#2b2b2b")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((10, 10, width - 11, height - 11), outline="#555555", width=2)
+    draw.line((40, height - 55, width - 40, height - 55), fill="#666666", width=3)
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
 
 
 def render_terminal_image(
