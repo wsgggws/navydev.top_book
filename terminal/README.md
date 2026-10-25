@@ -19,10 +19,12 @@ brew install wsgggws/ebook/lector
 运行：
 
 ```bash
-LECTOR_TOKEN="你的 reader token" lector
+LECTOR_TOKEN="服务端 token 的密钥部分" lector
 ```
 
 不配置 token 也可读取公开内容；token 会以 Bearer 方式发送。
+如果服务端配置为 `LECTOR_TOKEN=secret:reader`，客户端应填写 `secret`
+（不要带 `:reader` 或 `:admin` 权限后缀）。
 
 ```bash
 lector --url https://navydev.top/ebook --token "$LECTOR_TOKEN"

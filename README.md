@@ -57,7 +57,7 @@ make book books/my.epub
 ```bash
 brew tap wsgggws/ebook https://github.com/wsgggws/navydev.top_ebook
 brew install wsgggws/ebook/lector
-LECTOR_TOKEN="你的 reader token" lector
+LECTOR_TOKEN="服务端 token 的密钥部分" lector
 ```
 
 终端默认连接 `https://navydev.top/ebook`，自动跟随终端 ANSI 配色，也支持
