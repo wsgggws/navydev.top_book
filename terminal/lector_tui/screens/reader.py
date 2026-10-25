@@ -11,7 +11,7 @@ from io import BytesIO
 
 from rich.style import Style
 from rich.text import Text
-from textual_image.widget import Image as TerminalImage
+from lector_tui.image_widget import TerminalImage, image_error
 
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -21,6 +21,7 @@ from textual.events import Key
 from textual.widgets import Footer, Input, ListItem, ListView, Static
 
 from lector_tui.cache import ImageCache
+from lector_tui.image_data import decode_image
 from lector_tui.config import ProgressStore
 from lector_tui.widgets import ImageScroll, VimListView
 
@@ -68,10 +69,13 @@ class ChapterBlock(Static):
     }
 
     def __init__(self, chapter: "ChapterText", blocks: list[dict], kind: str) -> None:
-        super().__init__(classes="chapter-block")
+        super().__init__(classes="chapter-block", markup=False)
         self.chapter_view = chapter
         self.blocks = blocks
         self.kind = kind
+
+    def on_mount(self) -> None:
+        self.refresh_content()
 
     def refresh_content(self) -> None:
         self.update(self.build())
@@ -95,22 +99,14 @@ class ChapterBlock(Static):
                 for sentence in block.get("sentences", []):
                     text.append("  • ", style=Style(dim=True))
                     if sentence["id"] == self.chapter_view.current_sentence:
-                        self.chapter_view._append_sentence(
-                            text, sentence, current_style, read_style, now_style
-                        )
+                        self.chapter_view._append_sentence(text, sentence, current_style, read_style, now_style)
                     else:
                         text.append(sentence["text"])
                 continue
-            heading = (
-                Style(bold=True)
-                if block.get("type", "p").startswith("h")
-                else Style()
-            )
+            heading = Style(bold=True) if block.get("type", "p").startswith("h") else Style()
             for sentence in block.get("sentences", []):
                 if sentence["id"] == self.chapter_view.current_sentence:
-                    self.chapter_view._append_sentence(
-                        text, sentence, current_style, read_style, now_style
-                    )
+                    self.chapter_view._append_sentence(text, sentence, current_style, read_style, now_style)
                 else:
                     text.append(sentence["text"], style=heading)
         text.append("\n")
@@ -128,14 +124,17 @@ class ChapterText(Vertical):
         self.word_index: int = -1
         self.images: dict[str, bytes] = {}
         self._sentence_widgets: dict[str, ChapterBlock] = {}
+        self._image_widgets: dict[str, tuple[TerminalImage, Static]] = {}
 
     def compose(self) -> ComposeResult:
         self._sentence_widgets = {}
+        self._image_widgets = {}
         if not self.chapter:
             return
         yield Static(
             self.chapter.get("title", ""),
             classes="chapter-title chapter-title-block",
+            markup=False,
         )
         blocks = self._blocks()
         index = 0
@@ -145,20 +144,22 @@ class ChapterText(Vertical):
             if block_type == "img":
                 with Vertical(classes="chapter-image-block"):
                     data = self.images.get(str(block.get("id", "")))
-                    if data:
-                        yield TerminalImage(
-                            image=BytesIO(data),
-                            classes="chapter-image",
-                        )
-                    else:
-                        yield Static(
-                            "图片加载中…",
-                            classes="chapter-image-loading",
-                        )
+                    image = TerminalImage(
+                        image=BytesIO(data) if data else None,
+                        classes="chapter-image",
+                        on_error=image_error,
+                    )
+                    loading = Static("图片加载中…", classes="chapter-image-loading", markup=False)
+                    image.display = bool(data)
+                    loading.display = not bool(data)
+                    self._image_widgets[str(block.get("id", ""))] = (image, loading)
+                    yield image
+                    yield loading
                     if block.get("alt"):
                         yield Static(
                             f"图：{block['alt']}",
                             classes="chapter-image-caption",
+                            markup=False,
                         )
                 index += 1
                 continue
@@ -188,12 +189,31 @@ class ChapterText(Vertical):
 
     def set_chapter(self, chapter: dict) -> None:
         self.chapter = chapter
+        self._sentence_widgets = {}
+        self._image_widgets = {}
+        self.current_sentence = None
+        self.words = []
+        self.word_index = -1
         self.images = {}
         self.refresh(recompose=True)
 
-    def set_images(self, images: dict[str, bytes]) -> None:
-        self.images = images
-        self.refresh(recompose=True)
+    def set_images(self, images: dict[str, bytes | None]) -> None:
+        for image_id, data in images.items():
+            decoded = decode_image(data) if data is not None else None
+            if decoded is not None and data is not None:
+                self.images[image_id] = data
+            widgets = self._image_widgets.get(image_id)
+            if widgets is None:
+                if decoded is not None:
+                    decoded.close()
+                continue
+            image, loading = widgets
+            if decoded is None:
+                loading.update("图片加载失败")
+                continue
+            image.image = decoded
+            image.display = True
+            loading.display = False
 
     def set_cursor(self, sentence_id: str) -> None:
         previous = self.current_sentence
@@ -227,9 +247,7 @@ class ChapterText(Vertical):
         first = blocks[0]
         if not str(first.get("type", "")).startswith("h"):
             return blocks
-        text = "".join(
-            sentence.get("text", "") for sentence in first.get("sentences", [])
-        ).strip()
+        text = "".join(sentence.get("text", "") for sentence in first.get("sentences", [])).strip()
         title = str((self.chapter or {}).get("title", "")).strip()
         if text and text != title:
             return blocks
@@ -350,6 +368,7 @@ class BaseReaderScreen(Screen):
     # -- data ------------------------------------------------------------
     def load_book(self) -> None:
         """Load the book, its directory and the chapter the reader was in."""
+        self._image_store.namespace = self.app.api.base_url.rstrip("/")
         try:
             detail = self.app.api.get_book(self.book_id)
         except Exception as exc:  # noqa: BLE001
@@ -358,9 +377,13 @@ class BaseReaderScreen(Screen):
         self.book = detail["book"]
         self.toc = self.app.api.get_toc(self.book_id)
         self.toc_flat = flatten_toc(self.toc)
-        self.chapter_ids = sorted(
-            {node["chapter_id"] for node in self.toc if node.get("chapter_id")}
-        ) or [f"c{index}" for index in range(self.book.get("chapter_count", 0))]
+        # Chapter IDs encode spine order; TOC may omit chapters or nest them.
+        self.chapter_ids = [f"c{index}" for index in range(self.book.get("chapter_count", 0))]
+        if not self.chapter_ids:
+            self.chapter_ids = sorted(
+                {node["chapter_id"] for node, _ in self.toc_flat if node.get("chapter_id")},
+                key=lambda chapter_id: int(chapter_id[1:]),
+            )
         self.render_toc()
         # 位置只认本地这一份：终端与网页各记各的，互不影响。
         cursor = self.progress.get(self.book_id)
@@ -386,7 +409,7 @@ class BaseReaderScreen(Screen):
         for node, depth in self.toc_flat:
             title = node.get("title", "")
             marker = "  " * min(depth, 3)
-            listing.append(ListItem(Static(f"{marker}{title}")))
+            listing.append(ListItem(Static(f"{marker}{title}", markup=False)))
 
     def load_chapter(self, chapter_id: str, sentence_id: str | None = None) -> None:
         """Load a chapter and put the cursor where it belongs."""
@@ -397,9 +420,7 @@ class BaseReaderScreen(Screen):
             return
         self.chapter = payload["chapter"]
         self.sentences = [
-            sentence
-            for block in self.chapter.get("blocks", [])
-            for sentence in block.get("sentences", [])
+            sentence for block in self.chapter.get("blocks", []) for sentence in block.get("sentences", [])
         ]
         index = 0
         if sentence_id:
@@ -416,16 +437,17 @@ class BaseReaderScreen(Screen):
     def load_chapter_images(self, chapter_id: str) -> None:
         """Load image previews without blocking the terminal UI."""
         blocks = [
-            block
-            for block in (self.chapter or {}).get("blocks", [])
-            if block.get("type") == "img" and block.get("src")
+            block for block in (self.chapter or {}).get("blocks", []) if block.get("type") == "img" and block.get("src")
         ]
         if not blocks:
             return
 
         def worker() -> None:
-            previews: dict[str, bytes] = {}
+            from textual.worker import get_current_worker
+
             for block in blocks:
+                if get_current_worker().is_cancelled:
+                    return
                 src = str(block["src"])
                 cache_name = f"media:{src}"
                 data = self._image_store.get(self.book_id, cache_name)
@@ -436,21 +458,24 @@ class BaseReaderScreen(Screen):
                         data = None
                     if data is not None:
                         self._image_store.put(self.book_id, cache_name, data)
-                if data is not None:
-                    previews[str(block["id"])] = data
-            try:
-                self.app.call_from_thread(self._apply_chapter_images, chapter_id, previews)
-            except Exception:  # noqa: BLE001 - the screen may already be closed
-                pass
+                try:
+                    self.app.call_from_thread(
+                        self._apply_chapter_images,
+                        chapter_id,
+                        {str(block["id"]): data},
+                    )
+                except Exception:  # noqa: BLE001 - the screen may already be closed
+                    return
 
         self.run_worker(worker, group="chapter-images", exclusive=True, thread=True)
 
-    def _apply_chapter_images(self, chapter_id: str, previews: dict[str, bytes]) -> None:
+    def _apply_chapter_images(self, chapter_id: str, previews: dict[str, bytes | None]) -> None:
         if not self.chapter or self.chapter.get("chapter_id") != chapter_id:
             return
         try:
             self.query_one(ChapterText).set_images(previews)
-            self.scroll_to_cursor()
+            if getattr(self, "playing", False):
+                self.call_after_refresh(self.scroll_to_cursor)
         except Exception:  # noqa: BLE001 - the screen may already be closed
             pass
 
@@ -501,8 +526,7 @@ class BaseReaderScreen(Screen):
         percent = int((current / total * 100) if total else 0)
         chapter_title = self.chapter.get("title", "") if self.chapter else ""
         self.query_one("#status-bar", Static).update(
-            f" {chapter_title} · {percent}% · 句 {current}/{total} · "
-            "Space/p 播放 · q 返回"
+            f" {chapter_title} · {percent}% · 句 {current}/{total} · Space/p 播放 · q 返回"
         )
 
     # -- actions ---------------------------------------------------------
@@ -662,13 +686,7 @@ class BaseReaderScreen(Screen):
             listing.append(ListItem(Static("（没有找到）")))
         for hit in self._hits:
             snippet = hit.get("snippet", "").replace("<em>", "").replace("</em>", "")
-            listing.append(
-                ListItem(
-                    Static(
-                        f"{hit.get('chapter_title', '')}\n{snippet[:60]}"
-                    )
-                )
-            )
+            listing.append(ListItem(Static(f"{hit.get('chapter_title', '')}\n{snippet[:60]}")))
         listing.index = 0
         self.notify(f"找到 {payload.get('total', 0)} 处，按 n 逐个跳转", title="搜索")
 
@@ -702,9 +720,7 @@ class BaseReaderScreen(Screen):
         if not self.cursor:
             return
         try:
-            percent = self.app.api.percent(
-                self.book_id, self.cursor["chapter_id"], self.cursor["sentence_id"]
-            )
+            percent = self.app.api.percent(self.book_id, self.cursor["chapter_id"], self.cursor["sentence_id"])
         except Exception:  # noqa: BLE001 - 百分比算不出来不影响阅读
             return
         self.progress.set(
@@ -733,11 +749,7 @@ class BaseReaderScreen(Screen):
         results — after a search the box is hidden and cleared, and that must
         not wipe the hits that were just found.
         """
-        if (
-            event.input.id == "search-input"
-            and event.value.strip() == ""
-            and event.input.display
-        ):
+        if event.input.id == "search-input" and event.value.strip() == "" and event.input.display:
             self.restore_toc()
 
     def on_key(self, event: Key) -> None:
@@ -936,10 +948,14 @@ class ListenScreen(BaseReaderScreen):
         不然每次换句都要等一次网络，节奏会一顿一顿的。
         """
         sentences = self.sentences
-        index = next(
-            (i for i, s in enumerate(sentences) if s["id"] == self.current_sentence["id"]),
-            -1,
-        ) if self.current_sentence else -1
+        index = (
+            next(
+                (i for i, s in enumerate(sentences) if s["id"] == self.current_sentence["id"]),
+                -1,
+            )
+            if self.current_sentence
+            else -1
+        )
         if index < 0:
             return
         following = sentences[index + 1] if index + 1 < len(sentences) else None
@@ -949,9 +965,7 @@ class ListenScreen(BaseReaderScreen):
         if target.exists():
             return
         try:
-            self.app.api.download_audio(
-                self.book_id, following["id"], str(target)
-            )
+            self.app.api.download_audio(self.book_id, following["id"], str(target))
         except Exception:  # noqa: BLE001 - 预取失败不打扰用户
             pass
 

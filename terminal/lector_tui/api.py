@@ -5,11 +5,33 @@ from __future__ import annotations
 import json
 import ssl
 from dataclasses import dataclass
+from typing import BinaryIO
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 import certifi
+
+from lector_tui.image_data import MAX_IMAGE_BYTES
+
+
+def _read_image(response: BinaryIO) -> bytes:
+    """Read at most the image budget plus one overflow-detection byte."""
+    headers = getattr(response, "headers", {})
+    try:
+        expected = int(headers.get("Content-Length", ""))
+    except (TypeError, ValueError):
+        expected = -1
+    if expected > MAX_IMAGE_BYTES:
+        raise ValueError("图片下载超过 20 MiB 上限")
+    data = bytearray()
+    while chunk := response.read(min(64 * 1024, MAX_IMAGE_BYTES + 1 - len(data))):
+        data.extend(chunk)
+        if len(data) > MAX_IMAGE_BYTES:
+            raise ValueError("图片下载超过 20 MiB 上限")
+    if expected >= 0 and len(data) != expected:
+        raise ValueError("图片下载不完整：响应长度不符")
+    return bytes(data)
 
 
 class ApiError(Exception):
@@ -106,7 +128,7 @@ class ApiClient:
             headers=self._headers(),
         )
         with urlopen(request, timeout=60, context=self._ssl_context()) as response:
-            return response.read()
+            return _read_image(response)
 
     def fetch_cover(self, book_id: str) -> bytes:
         """Download the shelf cover for one book."""
@@ -115,7 +137,7 @@ class ApiClient:
             headers=self._headers(),
         )
         with urlopen(request, timeout=60, context=self._ssl_context()) as response:
-            return response.read()
+            return _read_image(response)
 
     def download_audio(self, book_id: str, sentence_id: str, target: str) -> str:
         """Download one sentence tile to a local file."""

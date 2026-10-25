@@ -1,167 +1,117 @@
-# navydev.top_ebook
+# navy's ebook
 
-**有声电子书**：EPUB 阅读 + 句级语音朗读服务。
+**有声电子书**：阅读 EPUB、逐句听书、文字随声音高亮。
+线上入口：<https://navydev.top/ebook>。仓库名为 `navydev.top_ebook`。
 
-- 线上：<https://navydev.top/ebook>
-- 网页端与终端端连接同一份内容，但各自保存阅读位置和播放选项
-- Python 3.12，依赖和环境统一由 [uv](https://docs.astral.sh/uv/) 管理
+## 功能与结构
 
-## 功能
+- 书架：书名模糊搜索、每页 12 本、最近阅读优先、其余按打开次数排序。
+- 阅读：目录、全书搜索、羊皮色默认主题、PC 与手机布局、键盘与触屏操作。
+- 听书：句级 TTS、词级高亮、音频预取、0.75–2.0× 倍速；中英文默认男声。
+- 进度：书架显示全书百分比，播放条显示本章 `mm:ss / mm:ss`，有小时用 `hh:mm:ss`。
+- 独立客户端：网页用 localStorage；终端用本机 JSON，阅读位置与选项互不覆盖。
 
-- **书架**：书名模糊搜索、每页 12 本、最近阅读优先、其余按打开次数排序
-- **阅读**：本书独立进度、章节播放时长、目录、全书搜索、主题与排版设置
-- **听书**：句级 TTS、逐词高亮、音频预取与本地缓存、0.75–2.0× 倍速
-- **语言音色**：中文默认中文男声，英文默认美式男声；只展示常用中英音色
-- **两端独立**：网页使用 `localStorage`，终端使用本地 JSON，不互相覆盖
-- **安全**：管理写操作使用 Bearer token；Nginx 与应用层拒绝明显的命令行客户端，
-  写请求校验同源来源，并返回 CSP、HSTS、Referrer Policy 等安全头
+| 目录 | 用途 |
+| --- | --- |
+| `lector/` | FastAPI、SQLite、标准库 EPUB 解析、Edge TTS 与音频缓存 |
+| `web/` | 原生 JavaScript ES Modules + CSS，无前端构建步骤 |
+| `terminal/` | 独立 Textual 客户端；系统音频播放器；原生终端图片与磁盘缓存 |
+| `books/` | 随仓库发布的 EPUB |
+| `docs/`、`deploy/` | API/UI 契约与部署说明 |
 
-## 项目结构
+## 本地运行
 
-| 项目 | 位置 | 依赖文件 | 启动 |
-| --- | --- | --- | --- |
-| 服务端 + 网页端 | 仓库根 | `pyproject.toml` / `uv.lock` | `uv run lector-server` |
-| 终端端 | `terminal/` | 独立的 `pyproject.toml` / `uv.lock` | `cd terminal && uv run lector` |
+开发统一使用 **uv + Python 3.12**。服务端与终端各自有 `pyproject.toml` 和 `uv.lock`。
 
-终端端只通过 HTTP 访问服务端，不依赖服务端代码。
-
-```text
-lector/       EPUB 解析、TTS、SQLite、HTTP API
-web/          原生 ES Modules + CSS，无前端构建步骤
-terminal/     Textual 终端客户端
-books/        随仓库发布的 EPUB
-docs/         API 与 UI 契约
-deploy/       部署配置
-data/         本地运行时数据（git 忽略）
-```
-
-## 快速开始
-
-```bash
+```sh
 uv sync
 uv run lector-server
-# 打开 http://127.0.0.1:8000
+# 浏览器打开 http://127.0.0.1:8000
 ```
 
-常用命令：
-
-```bash
-make test       # 服务端 + 终端端测试
+```sh
 make dev        # 热重载服务端
-make terminal   # 启动终端端
-make book books/my.epub
+make terminal   # 启动终端，默认连接线上
+make test       # 服务端与终端测试
 ```
 
-通过 Homebrew 安装终端（PyInstaller 独立二进制，自带 Python 运行时，
-机器上不需要 Python）：
+## 安装终端
 
-```bash
+```sh
 brew tap wsgggws/ebook https://github.com/wsgggws/navydev.top_ebook
 brew install wsgggws/ebook/lector
 lector
 ```
 
-终端默认连接 `https://navydev.top/ebook`，自动跟随终端 ANSI 配色，也支持
-`dracula`、`catppuccin-*` 等主题；正文采用窄长布局并支持 EPUB 内嵌图片。
-开发时可在 `terminal/` 内执行 `uv sync`，键位与主题设置见
-[terminal/README.md](terminal/README.md)。
+Homebrew 安装自带 Python 运行时的 **PyInstaller 独立二进制**，支持 macOS arm64/x86_64，
+不依赖系统 Python。已有安装可执行 `brew update && brew upgrade lector`。
 
-## 添加书籍
+默认连接线上 `/ebook`，公开阅读无需 token。支持 `hjkl`、空格播放/暂停、`q` 返回/退出。
+自动主题读取终端配色；书架封面与正文图片逐张异步显示。Sixel 按行绘制，支持局部重绘
+和滚动裁剪；不支持原生图片的终端使用彩色半块字符。
 
-网页不提供导入、上传或删除入口。书籍放在仓库的 `books/`，服务启动时自动导入。
+图片默认缓存 512 MiB，按服务器隔离；损坏缓存重新获取。macOS 缓存在
+`~/Library/Caches/lector/images/`，Linux 在 `~/.cache/lector/images/`，
+可用 `LECTOR_CACHE_DIR` 更改。完整键位、配置与发版见 [terminal/README.md](terminal/README.md)。
 
-推荐文件名：
+## 发布书籍
 
-```text
-书名(作者).epub
-书名（作者）.epub
-```
+书籍由维护者放进 `books/`，网页和终端均不提供上传、删除入口。
+启动时按内容哈希去重导入。文件名支持 `书名(作者).epub` 和 `书名（作者）.epub`，
+显示书名、作者以文件名为准。
 
-中英文括号都支持，书名和作者以文件名为准，不用 EPUB 内的广告元数据。
-
-```bash
+```sh
 cp ~/Downloads/new-book.epub books/
 git add books/new-book.epub
 git commit -m "book: add new-book"
 git push origin main
 ```
 
-也可以从 Markdown 目录生成 EPUB，并发送到正在运行的服务端：
+也可以从 Markdown 生成 EPUB 并导入本地运行的服务：
 
-```bash
+```sh
 make book books/my.epub
 make book BOOK="books/路径 带空格.epub"
 ```
 
-`make book` 在目标 EPUB 已存在且没有 Markdown 源时只导入成品，不重新构建。
-Markdown 源格式见 [AGENTS.md](AGENTS.md)。
+目标 EPUB 已存在且没有 Markdown 源时只导入成品。源目录格式与支持的 Markdown
+子集见 [PROMPT.md](PROMPT.md) 和 `lector/build.py`。
 
-## 配置
+## 配置与安全
 
-| 变量 | 默认 | 说明 |
+| 环境变量 | 默认 | 用途 |
 | --- | --- | --- |
-| `LECTOR_DATA_DIR` | `./data` | SQLite、书籍副本和音频缓存 |
-| `LECTOR_BOOKS_DIR` | `./books` | 启动时导入的 EPUB 目录 |
-| `LECTOR_TOKEN` | 空 | 可选管理令牌；未配置时公网管理写接口禁用 |
-| `LECTOR_HOST` | `127.0.0.1` | 监听地址；设置 token 后默认 `0.0.0.0` |
-| `LECTOR_PORT` | `8000` | 监听端口 |
-| `LECTOR_BASE_PATH` | 空 | HTTP 前缀；生产环境为 `/ebook` |
+| `LECTOR_DATA_DIR` | `./data` | SQLite、导入书籍、音频缓存 |
+| `LECTOR_BOOKS_DIR` | `./books` | 启动导入目录 |
+| `LECTOR_HOST` / `LECTOR_PORT` | `127.0.0.1` / `8000` | 监听地址与端口 |
+| `LECTOR_BASE_PATH` | 空 | 生产为 `/ebook` |
+| `LECTOR_TOKEN` | 空 | 公网管理令牌；不配置则禁用管理写接口 |
 | `LECTOR_TTS_ENGINE` | `edge` | `edge` / `espeak` / `auto` |
-| `LECTOR_VOICE` | `zh-CN-YunxiNeural` | 全局默认音色 |
-| `LECTOR_MAX_UPLOAD` | `52428800` | 上传上限，单位字节 |
+| `LECTOR_MAX_UPLOAD` | `52428800` | 上传字节上限 |
+| `LECTOR_AUDIO_CACHE_BYTES` | `10737418240` | 服务端音频缓存上限，默认 10 GiB，按最近使用淘汰 |
 
-令牌权限：
+阅读公开。管理接口使用 Bearer token：`secret` 或 `secret:admin` 具有管理权限，
+`secret:reader` 只读；客户端只发送 `secret`。本地管理豁免仅适用于直接 loopback
+开发连接；伪造 Host 或转发头不能取得管理权限。
 
-| 令牌 | 权限 |
-| --- | --- |
-| `<token>` / `<token>:admin` | 上传、删除、预热音频、清理缓存 |
-| `<token>:reader` | 只读，不能执行管理写入 |
+浏览器写请求校验完整同源，媒体读取和 TTS 参数/并发有上限；返回 CSP 等安全头。
+终端的 `X-Lector-Client: terminal` 和 User-Agent/Referer 检查是客户端识别及基础过滤，
+不构成身份认证。终端图片下载与解码也有大小、尺寸、像素限制。
 
-终端端只读，不需要令牌。
+## 部署与验证
 
-## 进度与状态
+GitHub Actions 在 main 提交后测试、构建镜像，再通过 **SSH + Docker Compose** 发布。
+容器绑定 `127.0.0.1:8010`，中央 Nginx 代理 `/ebook`；数据卷
+`navydev-top-ebook-data` 持久保存书籍和音频。健康检查失败会回滚。
+设置 GitHub Secrets 和手动运维见 [docs/DEPLOY.md](docs/DEPLOY.md)。
 
-- 网页：`localStorage` 的 `lector.settings`、`lector.book`、`lector.books`
-- 终端：`~/.config/lector/progress.json` 及同目录配置
-- `open_count` 是服务端全局打开次数，只影响书架热度排序，不是阅读进度
-- 网页听书条显示本章累计已播时间/章节总时长（`mm:ss`；有小时用 `hh:mm:ss`）；
-  全书百分比显示在书架卡片
-
-两端互不覆盖。服务端 `/progress` 接口仅作为可选兼容能力保留。
-
-## 安全与部署
-
-- 阅读 API 公开；未配置 token 时，上传、删除、音频预热/清理等管理写接口禁用
-- Nginx 拦截明显的 `curl`、`wget`、`python-requests`、`httpx` 等客户端
-- 健康检查、带 `X-Lector-Client: terminal` 的官方终端不需要 token
-- 本地 `127.0.0.1` 开发环境允许管理写入；线上域名未配置 token 时禁用管理写接口
-- 无 token 的写请求必须带同源 `Origin` 或 `Referer`
-- 这些是基础防护，不能替代 token 和 HTTPS
-
-生产环境使用 Docker Compose，由中央 Nginx 提供 TLS 和 `/ebook` 反向代理；
-数据在命名卷 `navydev-top-ebook-data`，不使用 systemd。完整流程见
-[docs/DEPLOY.md](docs/DEPLOY.md)。
-
-```bash
-cp deploy/env.example .env
-# 按需编辑 .env；线上默认不配置 LECTOR_TOKEN
-make docker-run
-```
-
-## 测试
-
-```bash
+```sh
 uv run pytest -q
-cd terminal && uv run pytest -q
+(cd terminal && uv run pytest -q)
+node --test web/js/util.test.mjs
 ```
 
-`requirements.txt` 由 `uv export` 生成，不要手工编辑。前端没有 `package.json`
-或构建步骤，界面变更通过浏览器验证。
-
-## 文档
-
-- [docs/API.md](docs/API.md)：HTTP API 契约
-- [docs/UI.md](docs/UI.md)：网页与终端界面契约
-- [docs/DEPLOY.md](docs/DEPLOY.md)：GitHub Actions、Docker、Nginx 与运维
-- [AGENTS.md](AGENTS.md)：开发约束、工作流与不变量
-- [PROMPT.md](PROMPT.md)：产品范围与阶段目标
+浏览器回归覆盖窄屏布局、倍速菜单、抽屉与焦点，准备方法见
+[web/tests/README.md](web/tests/README.md)。依赖导出文件 `requirements.txt` 由 uv 生成。
+开发约束见 [AGENTS.md](AGENTS.md)，接口与交互见 [docs/API.md](docs/API.md) 和
+[docs/UI.md](docs/UI.md)。

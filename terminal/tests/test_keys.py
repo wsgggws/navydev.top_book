@@ -71,11 +71,7 @@ def test_q_quits_from_the_bookshelf(monkeypatch):
 
 def test_app_import_does_not_probe_terminal_graphics():
     """--version and --check must not emit image-protocol escape sequences."""
-    code = (
-        "import sys\n"
-        "import lector_tui.app\n"
-        "raise SystemExit('textual_image' in sys.modules)\n"
-    )
+    code = "import sys\nimport lector_tui.app\nraise SystemExit('textual_image' in sys.modules)\n"
     result = subprocess.run(
         [sys.executable, "-c", code],
         capture_output=True,
@@ -84,3 +80,27 @@ def test_app_import_does_not_probe_terminal_graphics():
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout == ""
+
+
+def test_reader_uses_spine_order_even_when_toc_is_nested_or_incomplete():
+    from types import SimpleNamespace
+    from lector_tui.screens.reader import BaseReaderScreen
+
+    seen = []
+    api = SimpleNamespace(
+        base_url="https://example.test/ebook",
+        get_book=lambda book_id: {"book": {"chapter_count": 12}},
+        get_toc=lambda book_id: [{"chapter_id": "c10", "children": [{"chapter_id": "c2"}]}],
+    )
+    reader = SimpleNamespace(
+        book_id="b_test",
+        app=SimpleNamespace(api=api),
+        _image_store=SimpleNamespace(namespace=""),
+        progress=SimpleNamespace(get=lambda book_id: None),
+        render_toc=lambda: None,
+        first_readable_chapter=lambda: "c0",
+        load_chapter=lambda *args: seen.append(args),
+    )
+    BaseReaderScreen.load_book(reader)
+    assert reader.chapter_ids == [f"c{index}" for index in range(12)]
+    assert seen == [("c0", None)]

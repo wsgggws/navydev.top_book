@@ -6,6 +6,7 @@ import secrets
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass
+from ipaddress import ip_address
 
 from fastapi import Request
 
@@ -67,10 +68,23 @@ class RateLimiter:
 
 def client_address(request: Request) -> str:
     """The address the request came from."""
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    # Uvicorn resolves forwarding headers only for configured trusted peers.
     return request.client.host if request.client else "unknown"
+
+
+def is_local_development(request: Request) -> bool:
+    """The no-token exception is limited to direct loopback development."""
+    settings = get_context(request).settings
+    if settings.host not in ("127.0.0.1", "localhost", "::1"):
+        return False
+    if not is_local_host(request.headers.get("host")):
+        return False
+    if any(name == "forwarded" or name.startswith("x-forwarded-") for name in request.headers):
+        return False
+    try:
+        return request.client is not None and ip_address(request.client.host).is_loopback
+    except ValueError:
+        return False
 
 
 @dataclass(frozen=True)
@@ -98,9 +112,9 @@ def parse_token(raw: str) -> Credentials:
 def _credentials(request: Request) -> Credentials:
     """Authenticate the request and return the caller's permissions."""
     ctx = get_context(request)
-    configured = ctx.settings.token
-    if not configured:
-        if not is_local_host(request.headers.get("host")):
+    configured = parse_token(ctx.settings.token)
+    if not configured.token:
+        if not is_local_development(request):
             raise ApiError(
                 403,
                 "ADMIN_DISABLED",
@@ -112,9 +126,11 @@ def _credentials(request: Request) -> Credentials:
         raise ApiError(401, "UNAUTHORIZED", "缺少访问令牌")
     provided = header[7:].strip()
     # 权限后缀是服务端自己的配置，客户端只送密钥本身。
-    if not secrets.compare_digest(provided, parse_token(configured).token):
+    if not secrets.compare_digest(
+        provided.encode("utf-8"), configured.token.encode("utf-8")
+    ):
         raise ApiError(401, "UNAUTHORIZED", "访问令牌无效")
-    return parse_token(configured)
+    return configured
 
 
 async def require_auth(request: Request) -> None:
@@ -150,6 +166,8 @@ async def require_admin(request: Request) -> None:
 
 async def require_auth_upload(request: Request) -> None:
     """Authenticate an upload and charge it to the upload budget."""
-    _check_token(request)
+    credentials = _credentials(request)
+    if credentials.scope != SCOPE_ADMIN:
+        raise ApiError(403, "FORBIDDEN", "该令牌没有管理权限")
     ctx = get_context(request)
     ctx.limiter.check("upload", client_address(request), UPLOAD_LIMIT)

@@ -8,6 +8,7 @@ and rarely joined against.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -61,9 +62,20 @@ class Store:
     def source_path(self, book_id: str) -> Path:
         return self.book_dir(book_id) / "source.epub"
 
+    def book_file(self, book_id: str, *parts: str) -> Path | None:
+        """Resolve a stored resource without following links outside its book."""
+        if re.fullmatch(r"b_[0-9a-f]{8}", book_id) is None:
+            return None
+        root = self.settings.books_dir.resolve() / book_id
+        try:
+            path = root.joinpath(*parts).resolve()
+        except (OSError, RuntimeError):
+            return None
+        return path if path.is_relative_to(root) else None
+
     def cover_path(self, book_id: str) -> Path | None:
-        path = self.book_dir(book_id) / "cover.bin"
-        return path if path.exists() else None
+        path = self.book_file(book_id, "cover.bin")
+        return path if path is not None and path.is_file() else None
 
     # -- ingestion -------------------------------------------------------
     def ingest(
@@ -273,8 +285,15 @@ class Store:
             meta_path.write_text(json.dumps(meta, ensure_ascii=False), "utf-8")
 
     def load_chapter(self, book_id: str, chapter_id: str) -> Chapter | None:
-        path = self.chapter_path(book_id, chapter_id)
-        if not path.exists():
+        if re.fullmatch(r"c\d+", chapter_id) is None:
+            return None
+        if self.db.query_one(
+            "SELECT 1 FROM chapters WHERE book_id = ? AND chapter_id = ?",
+            (book_id, chapter_id),
+        ) is None:
+            return None
+        path = self.book_file(book_id, "chapters", f"{chapter_id}.json")
+        if path is None or not path.is_file():
             return None
         payload = json.loads(path.read_text("utf-8"))
         blocks = [
@@ -309,8 +328,8 @@ class Store:
         )
 
     def load_toc(self, book_id: str) -> list[TocNode]:
-        path = self.meta_path(book_id)
-        if not path.exists():
+        path = self.book_file(book_id, "meta.json")
+        if path is None or not path.is_file():
             return []
         meta = json.loads(path.read_text("utf-8"))
         return [_toc_from_dict(node) for node in meta.get("toc", [])]

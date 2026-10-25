@@ -33,13 +33,13 @@ def require_book(ctx: AppContext, book_id: str):
 
 #: The contract allows eight seconds of parsing before the upload is refused.
 PARSE_TIMEOUT = 10.0
+MAX_MEDIA_BYTES = 10 * 1024 * 1024
 
 _IMAGE_TYPES = {
     b"\xff\xd8\xff": "image/jpeg",
     b"\x89PNG\r\n\x1a\n": "image/png",
     b"GIF87a": "image/gif",
     b"GIF89a": "image/gif",
-    b"RIFF": "image/webp",
 }
 
 
@@ -158,10 +158,14 @@ async def get_cover(
 ) -> Response:
     """The cover image, if the book has one."""
     ctx = get_context(request)
+    require_book(ctx, book_id)
     path = ctx.store.cover_path(book_id)
     if path is None:
         raise ApiError(404, "NOT_FOUND", "该书没有封面", {"book_id": book_id})
-    media_type = _image_type(path.read_bytes()[:16]) or "image/jpeg"
+    with path.open("rb") as stream:
+        media_type = _image_type(stream.read(16))
+    if media_type is None:
+        raise ApiError(404, "NOT_FOUND", "封面不是受支持的图片")
     return FileResponse(
         path,
         media_type=media_type,
@@ -171,6 +175,8 @@ async def get_cover(
 
 def _image_type(head: bytes) -> str | None:
     """Detect the image type from its magic bytes."""
+    if head.startswith(b"RIFF") and head[8:12] == b"WEBP":
+        return "image/webp"
     for signature, media_type in _IMAGE_TYPES.items():
         if head.startswith(signature):
             return media_type
@@ -194,15 +200,24 @@ async def get_media(
     normalized = posixpath.normpath(path)
     if normalized.startswith("..") or normalized.startswith("/"):
         raise ApiError(404, "NOT_FOUND", "资源不存在", {"path": path})
-    source = ctx.store.source_path(book_id)
-    if not source.exists():
+    source = ctx.store.book_file(book_id, "source.epub")
+    if source is None or not source.is_file():
         raise ApiError(404, "NOT_FOUND", "书籍不存在", {"book_id": book_id})
     try:
         with zipfile.ZipFile(source) as zf:
-            data = zf.read(normalized)
+            info = zf.getinfo(normalized)
+            if info.file_size > MAX_MEDIA_BYTES:
+                raise ApiError(404, "NOT_FOUND", "图片超过大小上限")
+            with zf.open(info) as stream:
+                head = stream.read(16)
+                media_type = _image_type(head)
+                if media_type is None:
+                    raise ApiError(404, "NOT_FOUND", "资源不是受支持的图片")
+                data = head + stream.read(MAX_MEDIA_BYTES + 1)
+                if len(data) > MAX_MEDIA_BYTES:
+                    raise ApiError(404, "NOT_FOUND", "图片超过大小上限")
     except (KeyError, OSError, zipfile.BadZipFile) as exc:
         raise ApiError(404, "NOT_FOUND", "资源不存在", {"path": path}) from exc
-    media_type = _image_type(data[:16]) or "application/octet-stream"
     return Response(
         content=data,
         media_type=media_type,

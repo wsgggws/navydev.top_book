@@ -145,6 +145,93 @@ navydev-top-ebook-data
 
 `make docker-stop` 只停止容器，不会删除这个卷。
 
+## 5.1 音频缓存容量
+
+`LECTOR_AUDIO_CACHE_BYTES` 设置共享音频文件和词边界元数据的容量上限，单位为字节，
+默认 **10 GiB（10737418240 字节）**，用于保留听书预缓存。未设置、非法或非正数使用默认值。
+容量适用于内置单进程部署；启动时按文件时间裁剪，运行中按最近使用顺序淘汰缓存对，
+同时移除相应音频就绪记录；后续播放被淘汰的句子时会重新合成。调低上限并重启会淘汰
+超出容量的旧音频，书籍和阅读位置不受影响。
+
+本地运行可直接传入环境变量：
+
+```bash
+LECTOR_AUDIO_CACHE_BYTES=10737418240 uv run lector-server
+```
+
+Docker 部署需将变量传入容器；仅在 Compose 的 `.env` 写入变量不会自动注入应用。
+需要覆盖默认值时，在部署使用的 Compose `lector.environment` 中转发：
+
+```yaml
+services:
+  lector:
+    environment:
+      LECTOR_AUDIO_CACHE_BYTES: ${LECTOR_AUDIO_CACHE_BYTES:-10737418240}
+```
+
+然后在部署 `.env` 中设置 `LECTOR_AUDIO_CACHE_BYTES=<正整数字节数>`，并重建容器。
+
+## 5.2 nginx 到容器的受信代理链
+
+宿主机 nginx 的 HTTPS 请求通过 `127.0.0.1:8010` 转发到容器。容器看到的 TCP
+对端通常是 Docker bridge 网关，而不是 `127.0.0.1`。如果沿用 Uvicorn 仅信任
+`127.0.0.1` 的默认值，`X-Forwarded-Proto: https` 不会生效，同源校验会把正常的
+HTTPS `POST /open` 拒绝为 403，限流也会把所有用户合并到网关 IP。
+
+本仓库的 Compose 将 `lector` 单独连接到项目专属的 `lector_proxy` bridge：
+
+| 项目 | 默认值 |
+| --- | --- |
+| `LECTOR_PROXY_SUBNET`（专属网段） | `172.30.81.0/24` |
+| `LECTOR_PROXY_GATEWAY`（网关） | `172.30.81.1` |
+| 发布地址 | `127.0.0.1:8010:8010`，仅宿主机回环 |
+| `FORWARDED_ALLOW_IPS` | `127.0.0.1,::1,172.30.81.1/32` |
+
+Uvicorn 从环境变量读取受信列表。只有连接对端匹配该列表时，才接受代理给出的
+`X-Forwarded-Proto` 和 `X-Forwarded-For`；应用的同源检查和限流使用处理后的
+scheme 与客户端地址，不直接解释转发头。默认只信任固定网关 `/32`，不信任整个
+Docker 子网或全部 RFC1918 私网；同网段的其他容器也不自动获得代理信任。
+该网络不设为 external，不应接入其他服务；保留当前仅回环发布端口的限制。
+
+上线前确认默认网段不与宿主机路由或已有 Docker 网络冲突。如有冲突，只需在
+Compose 的 `.env` 中覆盖以下两个值，无需修改 YAML；网关必须位于所选子网内：
+
+```dotenv
+LECTOR_PROXY_SUBNET=172.24.8.0/24
+LECTOR_PROXY_GATEWAY=172.24.8.1
+```
+
+未显式设置 `FORWARDED_ALLOW_IPS` 时，默认受信列表会自动引用同一个
+`LECTOR_PROXY_GATEWAY`，上例得到 `127.0.0.1,::1,172.24.8.1/32`。
+如确需单独指定受信代理，仍可显式覆盖：
+
+```dotenv
+FORWARDED_ALLOW_IPS=127.0.0.1,::1,172.24.8.1/32
+```
+
+显式覆盖值会替换默认列表，不再自动跟随网关；必须填写容器实际看到的受信代理
+地址，不能使用 `*`。更改已有网络的 subnet/gateway 时，需要重建 Compose 网络和容器，
+可执行 `docker compose down`（不带 `-v`）后重新启动。
+命名数据卷保持不变，无需删除数据卷，也无需修改兄弟 nginx 项目。
+
+现有 nginx 必须覆盖 `X-Forwarded-Proto` 为实际 `$scheme`，并通过
+`$proxy_add_x_forwarded_for` 把实际连接客户端追加到 XFF 右侧。Uvicorn 从右向左跳过
+已知代理，选取第一个不受信地址作为客户端；例如攻击者伪造前缀后得到
+`198.51.100.8, 203.0.113.9`，限流仍归于实际客户端 `203.0.113.9`。不受信的直接
+连接即使提供 XFP/XFF，也不能改变 scheme 或客户端身份。
+
+部署后检查：
+
+```bash
+docker compose config
+docker inspect navydev-top-ebook --format '{{json .NetworkSettings.Networks}}'
+docker compose exec -T lector printenv FORWARDED_ALLOW_IPS
+```
+
+最终通过 HTTPS 网页打开书籍，确认 `POST /ebook/api/v1/books/{id}/open` 返回 200。
+仓库的 `tests/test_proxy_deployment.py` 通过实际 Uvicorn 配置及代理中间件覆盖该链路、
+不受信连接、伪造 XFF 前缀与不同客户端的独立限流。
+
 ## 6. 常用运维
 
 ```bash

@@ -72,36 +72,87 @@ function toast(message) {
   toastTimer = setTimeout(() => { dom.toast.hidden = true; }, 2600);
 }
 
-let hideTimer = null;
+const drawerTimers = new Map();
+let activeDrawer = null;
+let drawerTrigger = null;
 
-function openDrawer(name) {
-  closeDrawers();
-  if (hideTimer) clearTimeout(hideTimer);
-  const drawer = name === 'toc' ? dom.drawerToc : dom.drawerSettings;
-  drawer.hidden = false;
-  requestAnimationFrame(() => drawer.classList.add('is-open'));
-  dom.overlay.hidden = false;
+function setBackgroundInert(inert) {
+  for (const node of [dom.topbar, $('.stage'), dom.player]) node.inert = inert;
 }
 
-function closeDrawers() {
+function openDrawer(name) {
+  dom.body.classList.remove('immersive');
+  const trigger = activeDrawer ? drawerTrigger : document.activeElement;
+  closeDrawers({ restoreFocus: false });
+  closeRateMenu();
+  const drawer = name === 'toc' ? dom.drawerToc : dom.drawerSettings;
+  clearTimeout(drawerTimers.get(drawer));
+  drawerTimers.delete(drawer);
+  activeDrawer = drawer;
+  drawerTrigger = trigger;
+  drawer.hidden = false;
+  drawer.inert = false;
+  requestAnimationFrame(() => {
+    if (activeDrawer === drawer) drawer.classList.add('is-open');
+  });
+  (name === 'toc' ? dom.btnMenu : dom.btnSettings).setAttribute('aria-expanded', 'true');
+  dom.overlay.hidden = false;
+  setBackgroundInert(true);
+  drawer.querySelector(name === 'toc' ? '#search-input' : '#btn-settings-close')
+    .focus({ preventScroll: true });
+}
+
+function closeDrawers({ restoreFocus = true } = {}) {
+  const wasOpen = activeDrawer !== null;
+  activeDrawer = null;
   for (const drawer of [dom.drawerToc, dom.drawerSettings]) {
     drawer.classList.remove('is-open');
-  }
-  dom.overlay.hidden = true;
-  // Wait for the slide-out before hiding, but let a new drawer cancel it.
-  if (hideTimer) clearTimeout(hideTimer);
-  hideTimer = setTimeout(() => {
-    for (const drawer of [dom.drawerToc, dom.drawerSettings]) {
-      if (!drawer.classList.contains('is-open')) drawer.hidden = true;
+    drawer.inert = true;
+    clearTimeout(drawerTimers.get(drawer));
+    if (!drawer.hidden) {
+      drawerTimers.set(drawer, setTimeout(() => {
+        drawer.hidden = true;
+        drawerTimers.delete(drawer);
+      }, 240));
     }
-    hideTimer = null;
-  }, 240);
+  }
+  dom.btnMenu.setAttribute('aria-expanded', 'false');
+  dom.btnSettings.setAttribute('aria-expanded', 'false');
+  dom.overlay.hidden = true;
+  setBackgroundInert(false);
+  if (wasOpen && restoreFocus && drawerTrigger?.isConnected) {
+    drawerTrigger.focus({ preventScroll: true });
+  }
+  drawerTrigger = null;
 }
 
 function drawerOpen() {
-  return dom.drawerToc.classList.contains('is-open')
-    || dom.drawerSettings.classList.contains('is-open');
+  return activeDrawer !== null;
 }
+
+// Handle Escape before inputs and keep keyboard navigation inside the modal.
+document.addEventListener('keydown', (event) => {
+  if (!activeDrawer) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    closeDrawers();
+    return;
+  }
+  if (event.key !== 'Tab') return;
+  const controls = [...activeDrawer.querySelectorAll(
+    'button:not(:disabled), input:not(:disabled), select:not(:disabled), a[href], [tabindex="0"]',
+  )].filter(node => node.getClientRects().length > 0 && !node.closest('[hidden], [inert]'));
+  const first = controls[0];
+  const last = controls[controls.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}, true);
 
 dom.overlay.addEventListener('click', closeDrawers);
 $('#btn-toc-close').addEventListener('click', closeDrawers);
@@ -299,6 +350,8 @@ function updateUrl(bookId, chapterId = null, { replace = false } = {}) {
 }
 
 function showLibrary({ fromRoute = false, replace = false } = {}) {
+  closeDrawers({ restoreFocus: false });
+  closeRateMenu();
   dom.body.classList.remove('view-reader');
   dom.body.classList.add('view-library');
   dom.library.hidden = false;
@@ -741,8 +794,6 @@ dom.btnPlayerToggle.addEventListener('click', () => {
   setPlayerCollapsed(!dom.player.classList.contains('is-collapsed'));
 });
 /* 倍速：点一下弹出菜单，而不是一轮轮地转 */
-const RATE_STEPS = [0.75, 1, 1.25, 1.5, 1.75, 2];
-
 function openRateMenu() {
   const menu = dom.rateMenu;
   for (const button of menu.querySelectorAll('button')) {
@@ -751,17 +802,48 @@ function openRateMenu() {
   }
   menu.hidden = false;
   dom.btnRate.setAttribute('aria-expanded', 'true');
+  (menu.querySelector('.is-active') || menu.querySelector('button')).focus({ preventScroll: true });
 }
 
-function closeRateMenu() {
+function closeRateMenu({ restoreFocus = false } = {}) {
   dom.rateMenu.hidden = true;
   dom.btnRate.setAttribute('aria-expanded', 'false');
+  if (restoreFocus) dom.btnRate.focus({ preventScroll: true });
 }
 
 dom.btnRate.addEventListener('click', (event) => {
   event.stopPropagation();
   if (dom.rateMenu.hidden) openRateMenu();
   else closeRateMenu();
+});
+
+dom.btnRate.addEventListener('keydown', (event) => {
+  if (!['ArrowDown', 'ArrowUp'].includes(event.key)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  openRateMenu();
+});
+
+dom.rateMenu.addEventListener('keydown', (event) => {
+  if (event.key === 'Tab') {
+    closeRateMenu({ restoreFocus: true });
+    return;
+  }
+  const buttons = [...dom.rateMenu.querySelectorAll('button')];
+  const index = buttons.indexOf(document.activeElement);
+  let next;
+  if (event.key === 'ArrowDown') next = (index + 1) % buttons.length;
+  else if (event.key === 'ArrowUp') next = (index - 1 + buttons.length) % buttons.length;
+  else if (event.key === 'Home') next = 0;
+  else if (event.key === 'End') next = buttons.length - 1;
+  else return;
+  event.preventDefault();
+  event.stopPropagation();
+  buttons[next].focus();
+});
+
+dom.rateMenu.parentElement.addEventListener('focusout', (event) => {
+  if (!event.currentTarget.contains(event.relatedTarget)) closeRateMenu();
 });
 
 dom.rateMenu.addEventListener('click', (event) => {
@@ -774,7 +856,7 @@ dom.rateMenu.addEventListener('click', (event) => {
   // 倍速也是这本书自己的：换书再切回来还是这个速度。
   if (state.book) state.setPref(state.book.book_id, 'rate', value);
   applySettings();
-  closeRateMenu();
+  closeRateMenu({ restoreFocus: true });
 });
 
 document.addEventListener('click', (event) => {
@@ -898,7 +980,7 @@ document.addEventListener('keydown', async (event) => {
 
   const key = event.key;
   if (key === 'Escape') {
-    if (!dom.rateMenu.hidden) { closeRateMenu(); return; }
+    if (!dom.rateMenu.hidden) { closeRateMenu({ restoreFocus: true }); return; }
     if (drawerOpen()) { closeDrawers(); return; }
     if (document.body.classList.contains('immersive')) {
       document.body.classList.remove('immersive');
@@ -907,6 +989,11 @@ document.addEventListener('keydown', async (event) => {
     if (dom.body.classList.contains('view-reader')) { showLibrary(); return; }
     return;
   }
+  // Native controls own their activation and navigation keys.
+  if (event.target.closest('button, a[href], [role="button"]')
+    && [' ', 'Spacebar', 'Enter', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
+      'Home', 'End', 'PageUp', 'PageDown'].includes(key)) return;
+  if (!dom.rateMenu.hidden) return;
   if (key === '?' || (key === '/' && event.shiftKey)) {
     openDrawer('settings');
     event.preventDefault();
@@ -915,19 +1002,19 @@ document.addEventListener('keydown', async (event) => {
   if (key === '/') {
     event.preventDefault();
     openDrawer('toc');
-    setTimeout(() => $('#search-input').focus(), 60);
     return;
   }
   if (key === 't') {
-    if (dom.drawerToc.classList.contains('is-open')) closeDrawers();
+    if (activeDrawer === dom.drawerToc) closeDrawers();
     else openDrawer('toc');
     return;
   }
   if (key === 's') {
-    if (dom.drawerSettings.classList.contains('is-open')) closeDrawers();
+    if (activeDrawer === dom.drawerSettings) closeDrawers();
     else openDrawer('settings');
     return;
   }
+  if (drawerOpen()) return;
   if (key === 'm') { cycleTheme(); return; }
   if (key === 'f') {
     document.body.classList.toggle('immersive');

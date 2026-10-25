@@ -98,7 +98,7 @@ def client(settings: Settings, engine: FakeEngine) -> TestClient:
     app = create_app(settings)
     app.state.ctx.engine = engine
     app.state.ctx.audio.engine = engine
-    return TestClient(app)
+    return TestClient(app, base_url="http://localhost", client=("127.0.0.1", 50000))
 
 
 @pytest.fixture

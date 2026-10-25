@@ -42,7 +42,7 @@ def test_chapter_image_widget_survives_highlight_updates():
     """Highlighting text must not rebuild the image widgets."""
     from textual.app import App, ComposeResult
     from textual.containers import VerticalScroll
-    from textual_image.widget import Image as TerminalImage
+    from lector_tui.image_widget import TerminalImage
 
     from lector_tui.screens.reader import ChapterText
 
@@ -58,21 +58,19 @@ def test_chapter_image_widget_survives_highlight_updates():
         app = Host()
         async with app.run_test() as pilot:
             view = app.query_one(ChapterText)
-            view.set_chapter(
-                {
-                    "title": "Test",
-                    "blocks": [
-                        {
-                            "type": "p",
-                            "sentences": [
-                                {"id": "s1", "text": "first"},
-                                {"id": "s2", "text": "second"},
-                            ],
-                        },
-                        {"type": "img", "id": "img1", "src": "x", "alt": "test"},
-                    ],
-                }
-            )
+            view.set_chapter({
+                "title": "Test",
+                "blocks": [
+                    {
+                        "type": "p",
+                        "sentences": [
+                            {"id": "s1", "text": "first"},
+                            {"id": "s2", "text": "second"},
+                        ],
+                    },
+                    {"type": "img", "id": "img1", "src": "x", "alt": "test"},
+                ],
+            })
             view.set_images({"img1": buffer.getvalue()})
             view.set_cursor("s1")
             await pilot.pause()
@@ -84,5 +82,106 @@ def test_chapter_image_widget_survives_highlight_updates():
 
             assert view.query_one(TerminalImage) is image_widget
             assert image_widget.image is not None
+
+    asyncio.run(scenario())
+
+
+def test_sixel_rows_repaint_independently_at_the_correct_crop_origin():
+    """A dirty row must carry pixels even when the last image row is untouched."""
+    from rich.control import Control
+    from textual.app import App, ComposeResult
+    from textual.containers import VerticalScroll
+    from textual.geometry import Region
+    from lector_tui.image_widget import RowSixelImage, _RowSixels
+
+    class Host(App):
+        CSS = "RowSixelImage { width: 20; height: 10; }"
+
+        def compose(self) -> ComposeResult:
+            yield VerticalScroll(RowSixelImage(Image.new("RGB", (200, 200), "red")))
+
+    async def scenario():
+        app = Host()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            impl = app.query_one(_RowSixels)
+            strips = impl.render_lines(Region(0, 0, 20, 10))
+            assert len(strips) == 10
+            for y, strip in enumerate(strips):
+                assert any("\x1bP" in segment.text for segment in strip)
+                origin = Control.move_to(impl.region.x, impl.region.y + y).segment.text
+                assert origin in "".join(segment.text for segment in strip)
+            partial = impl.render_lines(Region(3, 4, 7, 1))
+            origin = Control.move_to(impl.region.x + 3, impl.region.y + 4).segment.text
+            assert origin in "".join(segment.text for segment in partial[0])
+            assert any("\x1bP" in segment.text for segment in partial[0])
+
+    asyncio.run(scenario())
+
+
+def test_loading_images_preserves_paragraphs_and_initial_text():
+    from textual.app import App, ComposeResult
+    from textual.containers import VerticalScroll
+    from lector_tui.screens.reader import ChapterText
+    from lector_tui.image_widget import TerminalImage
+
+    buffer = BytesIO()
+    Image.new("RGB", (80, 120), "blue").save(buffer, format="PNG")
+
+    class Host(App):
+        def compose(self) -> ComposeResult:
+            yield VerticalScroll(ChapterText())
+
+    async def scenario():
+        app = Host()
+        async with app.run_test() as pilot:
+            view = app.query_one(ChapterText)
+            view.set_chapter({
+                "title": "Test",
+                "blocks": [
+                    {"type": "p", "sentences": [{"id": "s1", "text": "First paragraph"}]},
+                    {"type": "img", "id": "img", "src": "x"},
+                    {"type": "p", "sentences": [{"id": "s2", "text": "Last paragraph"}]},
+                ],
+            })
+            await pilot.pause()
+            first = view.widget_for_sentence("s1")
+            last = view.widget_for_sentence("s2")
+            assert "First paragraph" in first.render().plain
+            assert "Last paragraph" in last.render().plain
+            widget = view.query_one(TerminalImage)
+            view.set_images({"img": buffer.getvalue()})
+            await pilot.pause()
+            assert view.widget_for_sentence("s1") is first
+            assert view.widget_for_sentence("s2") is last
+            assert view.query_one(TerminalImage) is widget
+            assert widget.display and widget.image is not None
+
+    asyncio.run(scenario())
+
+
+def test_tall_illustration_fits_the_preview_instead_of_cropping_its_bottom():
+    from textual.app import App, ComposeResult
+    from textual.containers import VerticalScroll
+    from lector_tui.image_widget import TerminalImage
+
+    class Host(App):
+        CSS = ".chapter-image { width: 40; height: auto; }"
+
+        def compose(self) -> ComposeResult:
+            yield VerticalScroll(
+                TerminalImage(
+                    Image.new("RGB", (200, 2000), "blue"),
+                    classes="chapter-image",
+                )
+            )
+
+    async def scenario():
+        app = Host()
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause()
+            preview = app.query_one(TerminalImage)
+            assert 0 < preview.size.height <= 16
+            assert preview._get_styled_size() == ("auto", "auto")
 
     asyncio.run(scenario())

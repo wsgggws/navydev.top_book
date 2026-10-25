@@ -18,6 +18,7 @@ PARSER_VERSION = 1
 
 #: Contract: uploads above this size are rejected with 413.
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+DEFAULT_AUDIO_CACHE_BYTES = 10 * 1024**3
 
 #: Contract: refuse archives whose expanded size dwarfs their compressed size.
 MAX_EXPANSION_RATIO = 200
@@ -35,7 +36,7 @@ SCOPE_READER = "reader"
 SCOPE_PUBLIC = "public"
 SCOPES = (SCOPE_ADMIN, SCOPE_READER)
 
-LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost", "::1", "testserver"})
+LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 
 #: 每种语言默认读哪个音色。中英文都默认使用男声。
 DEFAULT_VOICE_BY_LOCALE = {
@@ -83,6 +84,7 @@ class Settings:
     max_upload_bytes: int
     base_path: str
     seed_books_dir: Path | None
+    audio_cache_bytes: int = DEFAULT_AUDIO_CACHE_BYTES
 
     @property
     def web_dir(self) -> Path:
@@ -130,6 +132,9 @@ def load_settings(data_dir: Path | str | None = None) -> Settings:
         seed_books_dir = REPO_ROOT / "books"
     else:
         seed_books_dir = None
+    audio_cache_bytes = _env_int("LECTOR_AUDIO_CACHE_BYTES", DEFAULT_AUDIO_CACHE_BYTES)
+    if audio_cache_bytes <= 0:
+        audio_cache_bytes = DEFAULT_AUDIO_CACHE_BYTES
     return Settings(
         data_dir=root,
         db_path=root / "lector.db",
@@ -144,6 +149,7 @@ def load_settings(data_dir: Path | str | None = None) -> Settings:
         max_upload_bytes=_env_int("LECTOR_MAX_UPLOAD", MAX_UPLOAD_BYTES),
         base_path=base_path,
         seed_books_dir=seed_books_dir,
+        audio_cache_bytes=audio_cache_bytes,
     )
 
 

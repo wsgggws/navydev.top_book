@@ -31,7 +31,7 @@ wheels = [
 
 [[package]]
 name = "lector-tui"
-version = "1.3.3"
+version = "1.3.4"
 source = { editable = "." }
 dependencies = [
     { name = "certifi" },
@@ -50,7 +50,7 @@ requires-dist = [
     { name = "certifi", specifier = ">=2026.10.23" },
     { name = "pillow", specifier = ">=13.0.0" },
     { name = "textual", specifier = ">=0.80" },
-    { name = "textual-image", extras = ["textual"], specifier = ">=0.14.2" },
+    { name = "textual-image", extras = ["textual"], specifier = ">=0.14.2,<0.15" },
 ]
 
 [package.metadata.requires-dev]

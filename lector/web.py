@@ -70,7 +70,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     db = Database(settings.db_path)
     db.init_schema()
     store = Store(settings, db)
-    cache = AudioCache(settings.audio_dir)
+
+    def forget_evicted_tile(key: str) -> None:
+        with db.write() as conn:
+            conn.execute("DELETE FROM audio_tiles WHERE cache_key = ?", (key,))
+
+    cache = AudioCache(
+        settings.audio_dir,
+        max_bytes=settings.audio_cache_bytes,
+        on_evict=forget_evicted_tile,
+    )
     engine = build_engine(settings)
     audio = AudioService(settings, store, cache, engine)
 

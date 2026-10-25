@@ -9,8 +9,7 @@ from urllib.parse import urlsplit
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
-from lector.api.deps import parse_token
-from lector.config import is_local_host
+from lector.api.deps import is_local_development, parse_token
 
 _CLI_USER_AGENT = re.compile(
     r"(?:curl|wget|python-requests|httpx|httpie|postmanruntime|"
@@ -42,9 +41,7 @@ def install_security(app: FastAPI) -> None:
         settings = request.app.state.ctx.settings
         path = request.url.path
 
-        guard_enabled = bool(settings.token) or not is_local_host(
-            request.headers.get("host")
-        )
+        guard_enabled = bool(settings.token) or not is_local_development(request)
         if guard_enabled:
             user_agent = request.headers.get("user-agent", "")
             cli_client = not user_agent or _CLI_USER_AGENT.search(user_agent)
@@ -63,7 +60,10 @@ def install_security(app: FastAPI) -> None:
                 )
 
         if (
-            guard_enabled
+            (
+                guard_enabled
+                or any(name in request.headers for name in ("origin", "referer", "sec-fetch-site"))
+            )
             and request.method in _UNSAFE_METHODS
             and _is_api_path(path, settings.base_path)
             and not _has_valid_token(request)
@@ -126,7 +126,9 @@ def _has_valid_token(request: Request) -> bool:
     header = request.headers.get("authorization", "")
     if not configured or not header.lower().startswith("bearer "):
         return False
-    return secrets.compare_digest(header[7:].strip(), configured)
+    return secrets.compare_digest(
+        header[7:].strip().encode("utf-8"), configured.encode("utf-8")
+    )
 
 
 def _is_same_origin(request: Request) -> bool:
@@ -136,8 +138,18 @@ def _is_same_origin(request: Request) -> bool:
     source = request.headers.get("origin") or request.headers.get("referer")
     if not source:
         return False
-    parsed = urlsplit(source)
-    return (
-        parsed.scheme in ("http", "https")
-        and parsed.netloc == request.url.netloc
-    )
+    try:
+        parsed = urlsplit(source)
+        target = urlsplit(str(request.url))
+        source_port = parsed.port if parsed.port is not None else (443 if parsed.scheme == "https" else 80)
+        target_port = target.port if target.port is not None else (443 if target.scheme == "https" else 80)
+        return (
+            parsed.scheme in ("http", "https")
+            and parsed.username is None
+            and parsed.password is None
+            and parsed.scheme == target.scheme
+            and parsed.hostname == target.hostname
+            and source_port == target_port
+        )
+    except ValueError:
+        return False

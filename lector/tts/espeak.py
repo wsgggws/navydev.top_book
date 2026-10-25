@@ -39,6 +39,22 @@ def _find_binary() -> str | None:
     return None
 
 
+async def _communicate(
+    proc: asyncio.subprocess.Process, timeout: float
+) -> tuple[bytes, bytes]:
+    """Cancelling an asyncio wait does not terminate the child process."""
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        return stdout or b"", stderr or b""
+    finally:
+        if proc.returncode is None:
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                pass
+            await proc.communicate()
+
+
 class EspeakEngine:
     """Synthesis through the local ``espeak-ng`` binary."""
 
@@ -89,7 +105,7 @@ class EspeakEngine:
                     stdout=asyncio.subprocess.DEVNULL,
                     stderr=asyncio.subprocess.PIPE,
                 )
-                _, stderr = await asyncio.wait_for(proc.communicate(), timeout=self.timeout)
+                _, stderr = await _communicate(proc, self.timeout)
             except asyncio.TimeoutError as exc:
                 raise TTSUnavailable("语音合成超时") from exc
             except OSError as exc:
@@ -120,7 +136,7 @@ class EspeakEngine:
             proc = await asyncio.create_subprocess_exec(
                 *command, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE
             )
-            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=self.timeout)
+            _, stderr = await _communicate(proc, self.timeout)
         except asyncio.TimeoutError as exc:
             raise TTSUnavailable("音频转码超时") from exc
         except OSError as exc:

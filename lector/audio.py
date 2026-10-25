@@ -8,12 +8,13 @@ sentence, hear it" work.
 from __future__ import annotations
 
 import asyncio
+import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from lector.config import DEFAULT_VOICE_BY_LOCALE, FEATURED_VOICES, Settings
 from lector.store import Store
-from lector.tts.base import TTSEngine, TTSUnavailable, Voice
+from lector.tts.base import TTSEngine, TTSError, TTSUnavailable, Voice
 from lector.tts.cache import AudioCache, CachedTile, cache_key
 
 #: Silence inserted between two tiles of a chapter timeline.
@@ -21,6 +22,24 @@ INTER_SENTENCE_GAP = 0.0
 
 #: How long a voice list stays usable before it is fetched again.
 VOICE_CACHE_TTL = 300.0
+VOICE_RETRY_DELAY = 5.0
+MAX_CONCURRENT_SYNTHESIS = 4
+
+
+@dataclass
+class _TileLock:
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    users: int = 0
+
+
+def normalize_rate(rate: str) -> str:
+    """Bound the public cache key space and collapse equivalent spellings."""
+    if re.fullmatch(r"[+-][0-9]{1,6}%", rate) is None:
+        raise ValueError("rate 必须是带正负号的整数百分比")
+    percent = int(rate[:-1])
+    if not -90 <= percent <= 200:
+        raise ValueError("rate 必须在 -90% 到 +200% 之间")
+    return f"{percent:+d}%"
 
 
 @dataclass
@@ -45,20 +64,52 @@ class AudioService:
         self.store = store
         self.cache = cache
         self.engine = engine
-        self._locks: dict[str, asyncio.Lock] = {}
+        self._locks: dict[str, _TileLock] = {}
         self._voices: list[Voice] = []
         self._voices_at = 0.0
+        self._voice_lock = asyncio.Lock()
+        self._voice_retry_at = 0.0
+        self._voice_error: str | None = None
 
     # -- voices ----------------------------------------------------------
     async def voices(self) -> list[Voice]:
         """The engine's voice list, cached for a few minutes."""
-        now = time.monotonic()
-        if self._voices and now - self._voices_at < VOICE_CACHE_TTL:
-            return self._voices
-        voices = await self.engine.voices()
-        self._voices = voices
-        self._voices_at = now
-        return voices
+        async with self._voice_lock:
+            now = time.monotonic()
+            if self._voices and now - self._voices_at < VOICE_CACHE_TTL:
+                return self._voices
+            if self._voice_error is not None and now < self._voice_retry_at:
+                if self._voices:
+                    return self._voices
+                raise TTSUnavailable(self._voice_error)
+            try:
+                voices = await self.engine.voices()
+            except TTSError as exc:
+                self._voice_error = str(exc)
+                self._voice_retry_at = time.monotonic() + VOICE_RETRY_DELAY
+                if self._voices:
+                    return self._voices
+                raise
+            self._voices = voices
+            self._voices_at = time.monotonic()
+            self._voice_error = None
+            return voices
+
+    async def validate_options(
+        self, voice_id: str, rate: str, *, cached: bool = False
+    ) -> tuple[str, str]:
+        """Validate before any synthesis, cache write or book preference update."""
+        rate = normalize_rate(rate)
+        if len(voice_id) > 100 or not voice_id:
+            raise ValueError("voice_id 不是受支持的音色")
+        if cached and (
+            voice_id in FEATURED_VOICES
+            or voice_id in {voice.voice_id for voice in self._voices}
+        ):
+            return voice_id, rate
+        if voice_id not in {voice.voice_id for voice in await self.voices()}:
+            raise ValueError("voice_id 不是受支持的音色")
+        return voice_id, rate
 
     async def choose_voice(self, language: str | None, preferred: str | None) -> str:
         """Pick the voice a book should be read with.
@@ -75,6 +126,10 @@ class AudioService:
             return fallback
         prefix = language.split("-")[0].lower()
         wanted = DEFAULT_VOICE_BY_LOCALE.get(prefix)
+        # Standard online voices need no catalogue request just to locate an
+        # existing tile. Offline engines still select from their local list.
+        if wanted and self.engine.name != "espeak":
+            return wanted
         try:
             voices = await self.voices()
         except TTSUnavailable:
@@ -100,27 +155,42 @@ class AudioService:
         text = self.store.sentence_text(book_id, sentence_id)
         if text is None:
             return None
+        if len(voice_id) > 100 or not voice_id:
+            raise ValueError("voice_id 不是受支持的音色")
+        rate = normalize_rate(rate)
         key = cache_key(text.strip(), voice_id, rate, self.engine.version)
         cached = self.cache.load(key)
+        voice_id, rate = await self.validate_options(voice_id, rate, cached=cached is not None)
         if cached is not None:
             self._record_tile(book_id, sentence_id, key, voice_id, rate, cached)
             return cached
-        lock = self._locks.setdefault(key, asyncio.Lock())
-        async with lock:
-            cached = self.cache.load(key)
-            if cached is not None:
+        entry = self._locks.get(key)
+        if entry is None:
+            if len(self._locks) >= MAX_CONCURRENT_SYNTHESIS:
+                raise TTSUnavailable("语音合成繁忙，请稍后重试")
+            entry = self._locks[key] = _TileLock()
+        entry.users += 1
+        try:
+            async with entry.lock:
+                cached = self.cache.load(key)
+                if cached is not None:
+                    self._record_tile(book_id, sentence_id, key, voice_id, rate, cached)
+                    return cached
+                result = await self.engine.synth(text, voice_id, rate)
+                self.cache.store(key, result)
+                cached = CachedTile(
+                    audio=result.audio,
+                    duration=result.duration,
+                    words=result.words,
+                    granularity=result.granularity,
+                )
                 self._record_tile(book_id, sentence_id, key, voice_id, rate, cached)
                 return cached
-            result = await self.engine.synth(text, voice_id, rate)
-            self.cache.store(key, result)
-            cached = CachedTile(
-                audio=result.audio,
-                duration=result.duration,
-                words=result.words,
-                granularity=result.granularity,
-            )
-            self._record_tile(book_id, sentence_id, key, voice_id, rate, cached)
-            return cached
+        finally:
+            # Keep the lock until the last waiter leaves, including cancellation.
+            entry.users -= 1
+            if entry.users == 0:
+                del self._locks[key]
 
     def _record_tile(
         self,

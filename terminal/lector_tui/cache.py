@@ -13,6 +13,8 @@ import sys
 import time
 from pathlib import Path
 
+from lector_tui.image_data import MAX_IMAGE_BYTES, is_valid_image
+
 
 def default_cache_dir() -> Path:
     """The platform-appropriate cache directory for the terminal client."""
@@ -38,22 +40,35 @@ class ImageCache:
         self,
         root: Path | None = None,
         *,
+        namespace: str = "",
         max_bytes: int = 512 * 1024 * 1024,
-        max_item_bytes: int = 20 * 1024 * 1024,
+        max_item_bytes: int = MAX_IMAGE_BYTES,
     ) -> None:
+        if max_bytes < 0 or max_item_bytes < 0:
+            raise ValueError("Image cache byte limits must be non-negative")
         self.root = root or (CACHE_DIR / "images")
+        self.namespace = namespace
         self.max_bytes = max_bytes
-        self.max_item_bytes = max_item_bytes
+        self.max_item_bytes = min(max_item_bytes, MAX_IMAGE_BYTES)
 
     def _path(self, book_id: str, name: str) -> Path:
-        digest = hashlib.sha256(f"{book_id}\0{name}".encode("utf-8")).hexdigest()
+        # Hash the namespace separately so separators in a URL or book ID cannot
+        # make two distinct keys alias. Empty namespaces retain the legacy path.
+        key = f"{book_id}\0{name}".encode("utf-8")
+        if self.namespace:
+            key = hashlib.sha256(self.namespace.encode("utf-8")).digest() + b"\0" + key
+        digest = hashlib.sha256(key).hexdigest()
         return self.root / digest[:2] / f"{digest}.img"
 
     def get(self, book_id: str, name: str) -> bytes | None:
         """Return cached bytes and mark the entry as recently used."""
         path = self._path(book_id, name)
         try:
-            data = path.read_bytes()
+            with path.open("rb") as handle:
+                data = handle.read(self.max_item_bytes + 1)
+            if len(data) > self.max_item_bytes or not is_valid_image(data):
+                path.unlink(missing_ok=True)
+                return None
             os.utime(path, None)
             return data
         except OSError:
@@ -61,7 +76,7 @@ class ImageCache:
 
     def put(self, book_id: str, name: str, data: bytes) -> bool:
         """Store bytes atomically; oversized or unwritable entries are ignored."""
-        if not data or len(data) > self.max_item_bytes:
+        if len(data) > self.max_item_bytes or not is_valid_image(data):
             return False
         path = self._path(book_id, name)
         try:

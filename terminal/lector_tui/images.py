@@ -10,7 +10,9 @@ from __future__ import annotations
 from io import BytesIO
 from typing import Any
 
-from PIL import Image, ImageDraw, ImageOps, UnidentifiedImageError
+from PIL import Image, ImageDraw
+
+from lector_tui.image_data import decode_image
 from rich.style import Style
 from rich.text import Text
 from textual_image.renderable import (
@@ -38,15 +40,10 @@ def render_terminal_image(
     max_height: int = 36,
 ) -> Text | None:
     """Render image bytes as high-quality true-colour half blocks."""
-    try:
-        image = Image.open(BytesIO(data))
-        if image.width * image.height > 50_000_000:
-            return None
-        image.load()
-    except (OSError, UnidentifiedImageError, Image.DecompressionBombError):
+    image = decode_image(data)
+    if image is None:
         return None
-
-    image = ImageOps.exif_transpose(image).convert("RGB")
+    image = image.convert("RGB")
     image.thumbnail((max(1, width), max(2, max_height * 2)), Image.Resampling.LANCZOS)
     pixel_width, pixel_height = image.size
     pixels = image.load()
@@ -75,7 +72,7 @@ def render_chapter_image(data: bytes) -> Any | None:
     """
     if AutoImage in (HalfcellImage, UnicodeImage):
         return render_terminal_image(data)
-    try:
-        return AutoImage(BytesIO(data), width="100%", height="auto")
-    except (OSError, UnidentifiedImageError, Image.DecompressionBombError, ValueError):
+    image = decode_image(data)
+    if image is None:
         return None
+    return AutoImage(image, width="100%", height="auto")

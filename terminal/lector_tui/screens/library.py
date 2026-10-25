@@ -1,7 +1,7 @@
 """Screen one — the bookshelf.
 
 The terminal client is a reader: it looks at the shelf, it does not change it.
-Uploading and deleting books are the web client's business.
+Books are published from the repository; the client only reads them.
 """
 
 from __future__ import annotations
@@ -13,11 +13,12 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import Footer, Input, ListItem, Static
-from textual_image.widget import Image as TerminalImage
+from lector_tui.image_widget import TerminalImage, image_error
 
 from lector_tui.cache import ImageCache
 from lector_tui.config import ProgressStore
 from lector_tui.images import placeholder_cover
+from lector_tui.image_data import decode_image
 from lector_tui.widgets import VimListView
 
 from lector_tui.screens.reader import ReaderScreen
@@ -37,19 +38,23 @@ class BookItem(ListItem):
             yield TerminalImage(
                 image=BytesIO(placeholder_cover()),
                 classes="book-cover",
+                on_error=image_error,
             )
             with Vertical(classes="book-info"):
-                yield Static(book["title"], classes="book-title")
+                yield Static(book["title"], classes="book-title", markup=False)
                 yield Static(
-                    f"{book.get('author') or '未知作者'}\n"
-                    f"{book.get('language') or ''}  ·  已读 {self.percent}%",
+                    f"{book.get('author') or '未知作者'}\n{book.get('language') or ''}  ·  已读 {self.percent}%",
                     classes="book-meta",
+                    markup=False,
                 )
 
     def set_cover(self, data: bytes) -> None:
         """Swap the loading box for the downloaded cover."""
+        decoded = decode_image(data)
+        if decoded is None:
+            return
         try:
-            self.query_one(TerminalImage).image = BytesIO(data)
+            self.query_one(TerminalImage).image = decoded
         except Exception:  # noqa: BLE001 - a cover must never break the shelf
             return
 
@@ -57,7 +62,7 @@ class BookItem(ListItem):
 class LibraryScreen(Screen):
     """The shelf: every book the server knows about."""
 
-    # 终端端只读：上传与删除是网页端的事，终端不碰书架。
+    # 终端端只读，书籍由仓库发布。
     BINDINGS = [
         Binding("enter", "open", "打开"),
         Binding("space", "listen", "听书"),
@@ -71,7 +76,6 @@ class LibraryScreen(Screen):
     def __init__(self) -> None:
         super().__init__()
         self._books: list[dict] = []
-        self._image_cache = ImageCache()
 
     def compose(self) -> ComposeResult:
         with Vertical():
@@ -119,20 +123,27 @@ class LibraryScreen(Screen):
     def _load_covers(self, items: list[BookItem]) -> None:
         """Download covers off the UI thread and fill them in as they arrive."""
 
+        api = self.app.api
+        cache = ImageCache(namespace=api.base_url.rstrip("/"))
+
         def worker() -> None:
+            from textual.worker import get_current_worker
+
             for item in items:
+                if get_current_worker().is_cancelled:
+                    return
                 book = item.book
                 book_id = book["book_id"]
                 if not book.get("cover_url"):
                     continue
                 cache_name = f"cover:{book['cover_url']}"
-                data = self._image_cache.get(book_id, cache_name)
+                data = cache.get(book_id, cache_name)
                 if data is None:
                     try:
-                        data = self.app.api.fetch_cover(book_id)
+                        data = api.fetch_cover(book_id)
                     except Exception:  # noqa: BLE001 - fall back to a blank cover
                         continue
-                    self._image_cache.put(book_id, cache_name, data)
+                    cache.put(book_id, cache_name, data)
                 try:
                     self.app.call_from_thread(item.set_cover, data)
                 except Exception:  # noqa: BLE001 - the shelf may have been closed

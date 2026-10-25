@@ -5,7 +5,7 @@ from __future__ import annotations
 from textual.binding import Binding
 from textual.containers import VerticalScroll
 from textual.widgets import ListView
-from textual_image.widget import Image as TerminalImage
+from lector_tui.image_widget import TerminalImage
 
 
 def refresh_visible_images(container: ListView | VerticalScroll) -> None:

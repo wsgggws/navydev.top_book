@@ -13,7 +13,7 @@
   background: var(--surface);
   border-top: 1px solid var(--border);
   z-index: 25;
-  overflow: hidden;
+  overflow: visible;
   transition: background-color 180ms ease, border-color 180ms ease;
 }
 
@@ -82,6 +82,7 @@
 }
 
 .player.is-collapsed .player-panel {
+  visibility: hidden;
   opacity: 0;
   transform: translateX(calc(100% + 48px));
   pointer-events: none;
@@ -149,10 +150,16 @@
     padding-bottom: env(safe-area-inset-bottom, 0px);
     padding-inline: var(--sp-2);
   }
-  .player .icon-btn { width: 40px; height: 40px; }
+  .player .icon-btn { width: 44px; height: 44px; }
   .player .icon-btn-primary { width: 46px; height: 46px; }
   .player-status { bottom: calc(100% + 4px); }
   .player-bar { height: 4px; }
+  .player-mid { display: none; }
+  .player-left { flex: none; gap: 0; }
+  .player-right { flex: 1; min-width: 0; justify-content: flex-end; gap: var(--sp-1); }
+  .player-time { min-width: 0; white-space: normal; text-align: right; }
+  #btn-rate { min-width: 44px; min-height: 44px; padding-inline: var(--sp-1); }
+  .popup button { min-height: 44px; }
 }
 
 /* ---- 弹出菜单 ---- */

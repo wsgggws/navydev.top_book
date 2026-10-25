@@ -141,20 +141,20 @@ def test_token_protects_admin_writes_but_not_reading(tmp_path, epub2_bytes: byte
     os.environ["LECTOR_TOKEN"] = "s3cret"
     try:
         settings = load_settings(tmp_path / "data")
-        client = TestClient(create_app(settings))
+        client = TestClient(create_app(settings), base_url="http://localhost", client=("127.0.0.1", 50000))
         assert client.get("/api/v1/health").status_code == 200
         assert client.get("/api/v1/books").status_code == 200
         assert client.post(
             "/api/v1/books",
             files={"file": ("book.epub", epub2_bytes, "application/epub+zip")},
-            headers={"Origin": "http://testserver"},
+            headers={"Origin": "http://localhost"},
         ).status_code == 401
         assert client.post(
             "/api/v1/books",
             files={"file": ("book.epub", epub2_bytes, "application/epub+zip")},
             headers={
                 "Authorization": "Bearer wrong",
-                "Origin": "http://testserver",
+                "Origin": "http://localhost",
             },
         ).status_code == 401
         created = client.post(
@@ -213,7 +213,7 @@ def test_the_app_can_live_under_a_path(tmp_path, epub2_bytes: bytes):
 
     settings = load_settings(tmp_path / "data")
     settings = settings.__class__(**{**settings.__dict__, "base_path": "/ebook"})
-    client = TestClient(create_app(settings))
+    client = TestClient(create_app(settings), base_url="http://localhost", client=("127.0.0.1", 50000))
     book_id = client.post(
         "/ebook/api/v1/books",
         files={"file": ("book.epub", epub2_bytes, "application/epub+zip")},
@@ -225,7 +225,7 @@ def test_the_app_can_live_under_a_path(tmp_path, epub2_bytes: bytes):
     # 页面在 /ebook 与 /ebook/，并把基路径告诉前端
     page = client.get("/ebook")
     assert page.status_code == 200
-    assert "<title>有声电子书</title>" in page.text
+    assert "<title>navy's ebook</title>" in page.text
     assert '<base href="/ebook/">' in page.text
     assert 'window.lectorBase="/ebook"' in page.text
     assert "styles/tokens.css?v=" in page.text
@@ -346,7 +346,7 @@ def test_repository_books_are_imported_and_public(tmp_path, epub2_bytes: bytes):
     )
     app = create_app(settings)
     sync_seed_books(app.state.ctx.store, settings.seed_books_dir)
-    client = TestClient(app)
+    client = TestClient(app, base_url="http://localhost", client=("127.0.0.1", 50000))
 
     books = client.get("/api/v1/books")
     assert books.status_code == 200

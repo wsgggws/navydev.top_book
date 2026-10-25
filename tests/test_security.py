@@ -85,7 +85,7 @@ def test_public_host_without_a_token_allows_reads_but_disables_admin(
         files={"file": ("book.epub", epub2_bytes, "application/epub+zip")},
         headers={
             "Host": "navydev.top",
-            "Origin": "https://navydev.top",
+            "Origin": "http://navydev.top",
             "User-Agent": "Mozilla/5.0",
         },
     )

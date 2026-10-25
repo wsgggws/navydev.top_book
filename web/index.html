@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>有声电子书</title>
+<title>navy's ebook</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="styles/tokens.css">
 <link rel="stylesheet" href="styles/base.css">
@@ -15,7 +15,7 @@
 
 <header class="topbar" id="topbar">
   <div class="topbar-left">
-    <button class="icon-btn" id="btn-menu" aria-label="目录" title="目录 (t)">
+    <button class="icon-btn" id="btn-menu" aria-label="目录" title="目录 (t)" aria-controls="drawer-toc" aria-expanded="false">
       <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14"/></svg>
     </button>
     <button class="icon-btn" id="btn-back" aria-label="返回书架" title="返回书架 (Esc)" hidden>
@@ -33,7 +33,7 @@
     <button class="icon-btn" id="btn-font" aria-label="字号" title="字号 (+/-)">
       <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 15L8 4l5 11M4.8 11h6.4M13 15l2.4-5 2.6 5"/></svg>
     </button>
-    <button class="icon-btn" id="btn-settings" aria-label="设置" title="设置 (s)">
+    <button class="icon-btn" id="btn-settings" aria-label="设置" title="设置 (s)" aria-controls="drawer-settings" aria-expanded="false">
       <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14"/><circle cx="7" cy="5" r="1.6"/><circle cx="13" cy="10" r="1.6"/><circle cx="9" cy="15" r="1.6"/></svg>
     </button>
   </div>
@@ -90,7 +90,7 @@
 </main>
 
 <!-- 目录抽屉 -->
-<aside class="drawer drawer-left" id="drawer-toc" aria-label="目录" hidden>
+<aside class="drawer drawer-left" id="drawer-toc" role="dialog" aria-modal="true" aria-label="目录" hidden inert>
   <div class="drawer-head">
     <div class="search-box">
       <input type="search" id="search-input" placeholder="搜索全书" aria-label="搜索全书">
@@ -106,7 +106,7 @@
 </aside>
 
 <!-- 设置抽屉 -->
-<aside class="drawer drawer-right" id="drawer-settings" aria-label="设置" hidden>
+<aside class="drawer drawer-right" id="drawer-settings" role="dialog" aria-modal="true" aria-label="设置" hidden inert>
   <div class="drawer-head">
     <h2>设置</h2>
     <button class="icon-btn" id="btn-settings-close" aria-label="关闭设置" title="关闭 (Esc)">
@@ -194,7 +194,7 @@
     <div class="player-right">
       <span class="player-time" id="player-time">00:00 / 00:00</span>
       <div class="pop-wrap">
-        <button class="text-btn" id="btn-rate" title="倍速" aria-haspopup="true" aria-expanded="false">1.0×</button>
+        <button class="text-btn" id="btn-rate" title="倍速" aria-label="播放倍速" aria-controls="rate-menu" aria-haspopup="menu" aria-expanded="false">1.0×</button>
         <div class="popup" id="rate-menu" hidden role="menu" aria-label="倍速">
           <button role="menuitem" data-rate="0.75">0.75×</button>
           <button role="menuitem" data-rate="1">1.0×</button>

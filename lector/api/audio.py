@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query, Request, Response
 
 from lector.api.deps import AppContext, get_context, public_read, require_admin
-from lector.api.errors import ApiError
+from lector.api.errors import ApiError, validation_error
 from lector.config import DEFAULT_RATE_BY_LOCALE
 from lector.models import WarmRequest, WarmResponse, WordsResponse
 from lector.tts.base import TTSError, TTSTimeout, TTSUnavailable
@@ -59,6 +59,8 @@ async def get_audio(
     rate = rate or _default_rate(book.language)
     try:
         tile = await ctx.audio.tile(book_id, sentence_id, voice, rate)
+    except ValueError as exc:
+        raise validation_error(str(exc)) from exc
     except TTSTimeout as exc:
         raise ApiError(504, "TTS_TIMEOUT", str(exc)) from exc
     except TTSUnavailable as exc:
@@ -95,6 +97,8 @@ async def get_words(
     rate = rate or _default_rate(book.language)
     try:
         tile = await ctx.audio.tile(book_id, sentence_id, voice, rate)
+    except ValueError as exc:
+        raise validation_error(str(exc)) from exc
     except TTSTimeout as exc:
         raise ApiError(504, "TTS_TIMEOUT", str(exc)) from exc
     except TTSError as exc:
@@ -128,6 +132,12 @@ async def warm_audio(
     )
     voice = await ctx.audio.choose_voice(row["language"], payload.voice_id or row["voice_id"])
     rate = payload.rate or _default_rate(row["language"])
+    try:
+        voice, rate = await ctx.audio.validate_options(voice, rate)
+    except ValueError as exc:
+        raise validation_error(str(exc)) from exc
+    except TTSError as exc:
+        raise ApiError(503, "TTS_UNAVAILABLE", str(exc)) from exc
     with ctx.store.db.write() as conn:
         conn.execute(
             "UPDATE books SET voice_id = ?, updated_at = updated_at WHERE book_id = ?",

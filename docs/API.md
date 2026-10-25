@@ -66,8 +66,11 @@
 线上服务默认不配置 `LECTOR_TOKEN`，此时上传、删除、预热/清理音频等管理写接口
 返回 `403 ADMIN_DISABLED`；书籍通过仓库的 `books/` 在启动时导入。
 
-本机 `127.0.0.1` / `localhost` 开发环境仍允许无 token 的上传和删除，方便
-`make book`。一旦通过公网 Host 访问，管理接口即禁用。
+本机开发例外必须同时满足：服务配置仅监听回环地址、连接对端为回环 IP、
+Host 为 `127.0.0.1` / `localhost` / `[::1]`，且没有 `Forwarded` 或
+`X-Forwarded-*` 代理头。此时允许无 token 的管理操作，方便 `make book`。
+公网监听、远端连接、代理请求或公网 Host 均不能使用此例外，返回
+`403 ADMIN_DISABLED`。浏览器即使访问本机也不得跨源写入。
 
 ```bash
 # 服务端
@@ -96,7 +99,8 @@ uv run lector
 
 ### 0.6 限流
 
-按客户端 IP：上传接口 10 次/分钟，其余读接口 600 次/分钟。超限返回 429 与 `Retry-After`（秒）。写接口命中限流时**不做**自动重试。
+按 ASGI 连接中的客户端 IP（只由 Uvicorn 对可信代理解析转发头，应用不直接信任
+`X-Forwarded-For`）：上传接口 10 次/分钟，其余读接口 600 次/分钟。超限返回 429 与 `Retry-After`（秒）。写接口命中限流时**不做**自动重试。
 
 公网 Host 下启用以下浏览器防护：
 
@@ -106,7 +110,8 @@ uv run lector
   User-Agent 拦截。
 - 配置 `LECTOR_TOKEN` 后，带有效 Bearer token 的 CLI 同样放行。
 - 无有效 Bearer token 的 `POST`/`PUT`/`PATCH`/`DELETE` 必须带同源
-  `Origin` 或 `Referer`，且 `Sec-Fetch-Site` 不得为跨站。
+  `Origin` 或 `Referer`（协议、主机、有效端口均须一致），且 `Sec-Fetch-Site` 不得为跨站。
+  本机开发 CLI 可省略来源头；本机浏览器一旦携带来源头，也必须通过同源检查。
 - 响应统一带 CSP、`X-Frame-Options: SAMEORIGIN`、`nosniff`、Referrer Policy 与
   Permissions Policy。
 - 公开只读 API 允许终端客户端访问；需要管理写权限时使用 Bearer token。
@@ -249,7 +254,10 @@ uv run lector
 }
 ```
 
-按 `locale` 与 `name` 升序。客户端应把 `voice_id` 原样回传。
+按 `locale` 与 `name` 升序。客户端应把 `voice_id` 原样回传。音频读取和预热只接受引擎音色列表中的 ID；
+未知音色返回 `422 VALIDATION_ERROR`。音色列表复用缓存，并合并并发刷新；失败后退避 5 秒。
+刷新失败时保留旧列表。缓存命中时，已知特色音色或内存中旧列表内的音色无需联网验证；
+列表暂时不可用不会阻断这些音频与词边界。冷启动时不在特色列表中的音色仍需成功取得引擎列表。
 
 ---
 
@@ -321,7 +329,8 @@ uv run lector
 - 返回二进制图片，类型与 EPUB 内一致。
 - `Cache-Control: public, max-age=31536000, immutable`。
 - 路径被规范化后若越出压缩包，返回 `404`。
-- 资源不存在返回 `404`。
+- 资源不存在、不是 JPEG/PNG/GIF/WebP 图片或解压后超过 10 MiB，返回 `404`；
+  大小检查在解压资源前执行。封面和章节文件不得通过符号链接越出所属书籍目录。
 
 ### `GET /api/v1/books/{book_id}/toc`
 
@@ -398,6 +407,16 @@ uv run lector
 - `Content-Type: audio/mpeg`
 - `Content-Length` 必填（客户端据此预载下一句）
 - `Cache-Control: public, max-age=31536000, immutable`（URL 含内容哈希，天然不可变）
+- `rate` 必须是带正负号的整数百分比，范围 `-90%` 到 `+200%`；非法值返回
+  `422 VALIDATION_ERROR`。等值写法在生成缓存键前规范化（如 `+000%` → `+0%`）。
+- 同一进程最多同时合成 4 个不同缓存键；繁忙时返回 `503 TTS_UNAVAILABLE`，
+  相同缓存键仍合并为一次合成。成功、失败或取消后回收对应同步资源。
+- 共享音频文件及词边界元数据容量由 `LECTOR_AUDIO_CACHE_BYTES` 配置（正整数字节数），
+  默认 10 GiB（`10737418240`）；未设置、非法或非正数均使用默认值。启动时按文件时间
+  裁剪，运行中按最近
+  使用顺序淘汰缓存对，移除其音频就绪记录。被淘汰的句子后续按需重新合成。单个缓存对超过上限时
+  返回 `503 TTS_UNAVAILABLE`。容量控制针对内置单进程部署。
+- 离线 espeak/ffmpeg 合成超时或请求取消时，终止并回收对应子进程。
 - **首次请求触发合成**，可能耗时 0.3–3s；服务端须在 8s 内返回，否则 `504`
 - 该句合成失败时返回 `503`，`error.code = "TTS_UNAVAILABLE"`
 - 音频不存在时 `404`

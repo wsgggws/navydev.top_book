@@ -96,7 +96,7 @@ def test_engine_failure_returns_503(settings, epub2_bytes: bytes):
     failing = FailingEngine()
     app.state.ctx.engine = failing
     app.state.ctx.audio.engine = failing
-    client = TestClient(app)
+    client = TestClient(app, base_url="http://localhost", client=("127.0.0.1", 50000))
     book_id = upload(client, epub2_bytes).json()["book"]["book_id"]
     chapter = client.get(f"/api/v1/books/{book_id}/chapters/c0").json()["chapter"]
     sentence_id = chapter["blocks"][1]["sentences"][0]["id"]
@@ -115,7 +115,7 @@ def test_health_is_degraded_without_an_engine(settings):
     failing = FailingEngine()
     app.state.ctx.engine = failing
     app.state.ctx.audio.engine = failing
-    client = TestClient(app)
+    client = TestClient(app, base_url="http://localhost", client=("127.0.0.1", 50000))
     payload = client.get("/api/v1/health").json()
     assert payload["status"] == "degraded"
     assert payload["tts"]["available"] is False

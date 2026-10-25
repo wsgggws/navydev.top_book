@@ -15,7 +15,7 @@ from textual.theme import Theme
 from lector_tui.api import ApiClient
 from lector_tui.audio import AudioPlayer
 from lector_tui.config import ClientConfig
-from lector_tui.theme import resolve_theme
+from lector_tui.theme import _is_light, query_terminal_colors, resolve_theme
 
 #: The three themes of the interface specification.
 THEMES = {
@@ -130,8 +130,12 @@ class LectorApp(App):
         margin-top: 1;
     }
 
-    #library-list:focus > ListItem.-selected {
+    #library-list > ListItem.-highlight,
+    #library-list:focus > ListItem.-highlight,
+    #toc-pane > ListItem.-highlight,
+    #toc-pane:focus > ListItem.-highlight {
         background: $panel;
+        color: $foreground;
         border-left: solid $accent;
     }
 
@@ -222,6 +226,7 @@ class LectorApp(App):
     }
 
     .chapter-image {
+        content-align: center middle;
         width: 100%;
         height: auto;
         margin-bottom: 1;
@@ -266,6 +271,7 @@ class LectorApp(App):
         token: str | None = None,
         theme: str | None = None,
         theme_preference: str | None = None,
+        terminal_colors: dict[str, str] | None = None,
     ) -> None:
         super().__init__()
         self.config = ClientConfig.load()
@@ -277,13 +283,34 @@ class LectorApp(App):
         self.audio = AudioPlayer()
         for custom_theme in THEMES.values():
             self.register_theme(custom_theme)
+        # Snapshot RGB colours instead of blending ANSI default (0,0,0).
+        for name, fallback in (("ansi-light", THEMES["paper"]), ("ansi-dark", THEMES["night"])):
+            colors = terminal_colors or {}
+            background = colors.get("background", fallback.background)
+            foreground = colors.get("foreground", fallback.foreground)
+            accent = colors.get("accent", fallback.accent)
+            bg = tuple(int(background[i : i + 2], 16) for i in (1, 3, 5))
+            fg = tuple(int(foreground[i : i + 2], 16) for i in (1, 3, 5))
+            panel = "#" + "".join(f"{round(b * 0.92 + f * 0.08):02x}" for b, f in zip(bg, fg))
+            muted = "#" + "".join(f"{round(b * 0.35 + f * 0.65):02x}" for b, f in zip(bg, fg))
+            self.register_theme(
+                Theme(
+                    name=name,
+                    primary=accent,
+                    secondary=accent,
+                    accent=accent,
+                    foreground=foreground,
+                    background=background,
+                    surface=background,
+                    panel=panel,
+                    dark=not _is_light(*bg),
+                    variables={"text-muted": muted, "text-disabled": muted},
+                )
+            )
         preference = theme_preference or theme or self.config.theme
         self._apply_theme(preference, actual=theme, save=False)
 
     def on_mount(self) -> None:
-        # Image capability probing writes escape sequences to the terminal.
-        # Import the screens only when the TUI starts, never for --version or
-        # --check, otherwise those one-shot commands produce stray output.
         from lector_tui.screens.library import LibraryScreen
 
         self.push_screen(LibraryScreen())
@@ -333,8 +360,7 @@ class LectorApp(App):
     def action_help(self) -> None:
         """Show the key bindings."""
         self.notify(
-            "hjkl 移动 · Space/p 播放暂停 · r 重播 · +/- 倍速 · "
-            "/ 搜索 · [ ] 换章 · t 目录 · f 全屏 · m 主题 · q 返回",
+            "hjkl 移动 · Space/p 播放暂停 · r 重播 · +/- 倍速 · / 搜索 · [ ] 换章 · t 目录 · f 全屏 · m 主题 · q 返回",
             title="快捷键",
             timeout=8,
         )
@@ -385,18 +411,21 @@ def main(argv: list[str] | None = None) -> None:
         except Exception as exc:  # noqa: BLE001 - a CLI probe should explain failure
             print(f"连接失败：{exc}")
             raise SystemExit(1) from exc
-        print(
-            f"OK {client.base_url} · {health.get('status', 'unknown')} · "
-            f"{len(books)} books"
-        )
+        print(f"OK {client.base_url} · {health.get('status', 'unknown')} · {len(books)} books")
         return
 
+    # Probe graphics before Textual starts reading stdin, after all one-shot
+    # commands have exited. Otherwise Textual can consume the probe replies.
+    from lector_tui.screens import library  # noqa: F401
+
     preference = args.theme or config.theme
+    colors = query_terminal_colors()
     LectorApp(
         base_url=args.url,
         token=args.token,
         theme=resolve_theme(preference, probe=True),
         theme_preference=preference,
+        terminal_colors=colors,
     ).run()
 
 
