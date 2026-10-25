@@ -411,7 +411,7 @@ wheels = [
 
 [[package]]
 name = "lector-tui"
-version = "1.3.9"
+version = "1.3.10"
 source = { directory = "terminal" }
 dependencies = [
     { name = "certifi" },

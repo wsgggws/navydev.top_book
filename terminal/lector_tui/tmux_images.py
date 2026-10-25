@@ -51,5 +51,17 @@ def pane_geometry() -> PaneGeometry | None:
 
 def passthrough(sequence: str) -> str:
     """Quote ESC for tmux's DCS transport, preserving the outer cursor."""
-    frame = "\x1b7\x1b[?2026h" + sequence + "\x1b[?2026l\x1b8"
-    return "\x1bPtmux;" + frame.replace("\x1b", "\x1b\x1b") + "\x1b\\"
+    # Chunking Kitty's payload is insufficient if one outer DCS still contains
+    # the entire PNG. tmux discards strings over input-buffer-size (often 1 MiB).
+    # Keep each complete graphics packet in its own small transport envelope.
+    packets = re.split(r"(?<=\x1b\\)(?=\x1b_G)", sequence)
+    position = re.match(r"\x1b\[\d+;\d+H", sequence)
+    prefix = position[0] if position else ""
+    envelopes = []
+    for index, packet in enumerate(packets):
+        # tmux can restore its cursor between raw packets. Repeat the absolute
+        # position so the final Kitty chunk places the image in the right cell.
+        body = (prefix if index else "") + packet
+        frame = "\x1b7\x1b[?2026h" + body + "\x1b[?2026l\x1b8"
+        envelopes.append("\x1bPtmux;" + frame.replace("\x1b", "\x1b\x1b") + "\x1b\\")
+    return "".join(envelopes)

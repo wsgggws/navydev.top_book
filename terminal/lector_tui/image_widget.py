@@ -125,7 +125,9 @@ class _WholeInlinePNG(_WholeSixels):
             more = int(start + 4096 < len(data))
             header = f"a=T,f=100,i={self.image_id},c={crop.width},r={crop.height},C=1," if start == 0 else ""
             chunks.append(f"\x1b_G{header}q=2,m={more};{chunk}\x1b\\")
-        return self.delete() + "".join(chunks)
+        # Reusing the same ID replaces its placement when the final chunk is
+        # ready. Keep the old image visible while the new PNG is transmitted.
+        return "".join(chunks)
 
 
 class WholeSixelImage(SixelImage, Renderable=SixelImage._Renderable):

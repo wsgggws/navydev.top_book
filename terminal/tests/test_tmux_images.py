@@ -48,6 +48,18 @@ def test_passthrough_quotes_every_escape_and_restores_cursor():
     assert encoded[7:-2].replace("\x1b\x1b", "\x1b") == "\x1b7\x1b[?2026h" + sequence + "\x1b[?2026l\x1b8"
 
 
+def test_large_png_uses_small_envelopes_and_repeats_placement_coordinates():
+    position = "\x1b[5;24H"
+    packets = "".join("\x1b_Gq=2,m=1;" + "A" * 4096 + "\x1b\\" for _ in range(300))
+    envelopes = passthrough(position + packets).split("\x1bPtmux;")[1:]
+    assert len(envelopes) == 300
+    assert all(len(envelope) < 8192 for envelope in envelopes)
+    for envelope in envelopes:
+        decoded = envelope[:-2].replace("\x1b\x1b", "\x1b")
+        assert position in decoded
+        assert decoded.startswith("\x1b7") and decoded.endswith("\x1b8")
+
+
 def test_inline_images_coalesce_scrolls_and_release_old_screen(monkeypatch):
     from PIL import Image
     from lector_tui import image_widget, terminal_graphics

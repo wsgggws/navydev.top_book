@@ -5,6 +5,7 @@ from io import BytesIO
 import json
 import os
 import pty
+import random
 import re
 import select
 import shlex
@@ -31,6 +32,8 @@ def test_real_tmux_preserves_cached_images_with_native_support_or_fallback(tmp_p
     data = BytesIO()
     picture = Image.new("RGB", (200, 160))
     picture.putdata([(x, y, (x + y) % 256) for y in range(160) for x in range(200)])
+    if passthrough:
+        picture = Image.frombytes("RGB", (800, 480), random.Random(42).randbytes(800 * 480 * 3))
     picture.save(data, format="PNG")
     assert ImageCache(cache_root / "images", namespace="test").put("book", "cover", data.getvalue())
     socket = "lector-test-" + uuid.uuid4().hex[:10]
@@ -42,6 +45,8 @@ def test_real_tmux_preserves_cached_images_with_native_support_or_fallback(tmp_p
     if outer == "WezTerm":
         # tmux may replace TERM_PROGRAM; WezTerm's pane identity survives.
         env.update(TERM_PROGRAM="tmux", WEZTERM_PANE="test")
+    if passthrough:
+        env["LECTOR_TEST_LARGE_IMAGE"] = "1"
     env.pop("TMUX", None)
     marker = tmp_path / "rendered.json"
     config = tmp_path / "tmux.conf"
@@ -49,7 +54,7 @@ def test_real_tmux_preserves_cached_images_with_native_support_or_fallback(tmp_p
     script = tmp_path / "render.py"
     script.write_text(textwrap.dedent('''
         from io import BytesIO
-        import json, subprocess, sys
+        import json, os, subprocess, sys
         from pathlib import Path
         from lector_tui.cache import ImageCache
         from lector_tui.image_app import ImageApp
@@ -59,7 +64,7 @@ def test_real_tmux_preserves_cached_images_with_native_support_or_fallback(tmp_p
         data = ImageCache(namespace="test").get("book", "cover")
         assert data, "tmux must reuse the file cached outside tmux"
         class Demo(ImageApp):
-            CSS = "TerminalImage {width: 20; height: 8;}"
+            CSS = "TerminalImage {width: 80; height: 24;}" if os.environ.get("LECTOR_TEST_LARGE_IMAGE") else "TerminalImage {width: 20; height: 8;}"
             def compose(self) -> ComposeResult:
                 yield TerminalImage(BytesIO(data))
             def on_mount(self):
@@ -115,9 +120,10 @@ def test_real_tmux_preserves_cached_images_with_native_support_or_fallback(tmp_p
                 if b"m=0" in header:
                     pngs.append(base64.b64decode(b"".join(chunks)))
             assert len(pngs) >= 2, "initial and async image must use high-resolution PNG, not half cells"
+            assert len(pngs[-1]) > 1024 * 1024, "exercise PNGs larger than tmux's default per-string limit"
             image = Image.open(BytesIO(pngs[-1]))
             assert image.width >= 200 and image.height >= 160
-            assert len(image.getcolors(maxcolors=100_000) or []) > 256
+            assert image.getcolors(maxcolors=256) is None, "PNG must retain more than 256 colours"
         elif expected_native:
             assert b'"1;1;' in output, "tmux must pass native image pixels to the outer terminal"
             assert len(set(re.findall(rb"#[0-9]+;2;[0-9;]+", output))) > 16
