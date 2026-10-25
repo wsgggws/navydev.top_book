@@ -51,7 +51,8 @@ git diff --check
   保留缩放像素与编码缓存上限；适配器依赖 Textual/textual-image 内部接口，升级须重跑图形回归。
 - 图片磁盘缓存按服务器、书籍和资源隔离，tmux 内外复用；下载、解码均受大小/像素限制，损坏条目淘汰重试。
 - 参数解析后、Textual 接管 stdin 前检测颜色与图形；`--version/--help/--check` 不发送图形探测序列。
-  直连 WezTerm/Kitty 按环境识别，避免 Kitty 查询迟到应答；WezTerm + tmux 固定使用彩色半块图片，避免空白或跨页残影。
+  直连 WezTerm/Kitty 按环境识别，避免 Kitty 查询迟到应答；WezTerm + tmux 已允许 passthrough 时用带独立 ID 的高清 PNG，静默传输、按 ID 清理。
+  PNG 在 tmux 文字提交后合并绘制；取消旧页面待绘图片，校验窗口可见性及分屏/状态栏偏移。源码与打包二进制都须验证。
   其它 tmux 连接校验自身及连接终端的 Sixel 能力，失败用彩色半块图片；能力应答不能替代真实显示验证。
 - 焦点恢复或 `Ctrl+l` 重绘缓存位图，不重复下载，不修改用户 tmux 配置。
   图片改动验证首次加载、`jk`/滚轮滚动、窗口切换、裁剪及真实 tmux 的原生/降级路径。

@@ -1,8 +1,8 @@
 """Choose image capabilities without sending Kitty queries to other terminals.
 
 WezTerm can answer primary DA before a pending Kitty query. The library stops
-reading at DA, so the late APC reply can be echoed by the shell. Only Kitty's
-Unicode placement renderer needs Kitty support; identify it from its environment.
+reading at DA, so the late APC reply can be echoed by the shell. Identify Kitty
+from its environment and use quiet PNG transfers for permitted WezTerm/tmux.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ import time
 
 _DA = re.compile(rb"\x1b\[\?([0-9;]*)c")
 _CELL = re.compile(rb"\x1b\[6;(\d+);(\d+)t")
+inline_png = False
 
 
 def _query_sixel(need_cell_size: bool, timeout: float = 0.2) -> tuple[bool, int, int]:
@@ -79,10 +80,11 @@ def configure_graphics() -> None:
     that a multiplexer can render native graphics. An unknown terminal
     gets a bounded Sixel DA query, never a Kitty APC query. Non-TTY commands do
     no terminal I/O. Ioctl dimensions can be zero in a newly opened PTY.
-    WezTerm behind tmux uses half cells: native Sixel layers can remain blank
-    until focus changes, or survive a screen change despite successful DA.
+    WezTerm behind tmux uses inline PNG when passthrough is already permitted;
+    its native Sixel layers can remain blank or survive a screen change.
     """
     from textual_image import _terminal
+    global inline_png
 
     if hasattr(_terminal.probe_terminal, "_result"):
         return
@@ -117,9 +119,12 @@ def configure_graphics() -> None:
             except (ImportError, OSError, ValueError):
                 pass
         if multiplexed and wezterm:
-            # A positive capability response cannot establish correct native
-            # redraws. Text cells participate in tmux's normal diff/scroll path.
+            # Sixel capability does not establish correct native redraws. Use
+            # the quiet PNG channel when permitted, otherwise visible half cells.
             sixel = False
+            from lector_tui.tmux_images import pane_geometry
+
+            inline_png = pane_geometry() is not None
     if not (width and height):
         try:
             width = int(os.environ.get("TEXTUAL_CELL_WIDTH", "10"))

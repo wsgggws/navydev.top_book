@@ -1,5 +1,6 @@
 """Render cached images through an isolated tmux server and an outer terminal PTY."""
 import fcntl
+import base64
 from io import BytesIO
 import json
 import os
@@ -22,8 +23,8 @@ import pytest
 
 @pytest.mark.skipif(not shutil.which("tmux"), reason="tmux executable is not installed")
 @pytest.mark.parametrize("advertised", [False, True])
-@pytest.mark.parametrize("outer", ["WezTerm", "foot"])
-def test_real_tmux_preserves_cached_images_with_native_support_or_fallback(tmp_path, advertised, outer):
+@pytest.mark.parametrize("outer,passthrough", [("WezTerm", True), ("WezTerm", False), ("foot", False)])
+def test_real_tmux_preserves_cached_images_with_native_support_or_fallback(tmp_path, advertised, outer, passthrough):
     from lector_tui.cache import ImageCache
 
     cache_root = tmp_path / "cache"
@@ -43,6 +44,8 @@ def test_real_tmux_preserves_cached_images_with_native_support_or_fallback(tmp_p
         env.update(TERM_PROGRAM="tmux", WEZTERM_PANE="test")
     env.pop("TMUX", None)
     marker = tmp_path / "rendered.json"
+    config = tmp_path / "tmux.conf"
+    config.write_text("set -g allow-passthrough on\n" if passthrough else "")
     script = tmp_path / "render.py"
     script.write_text(textwrap.dedent('''
         from io import BytesIO
@@ -69,7 +72,7 @@ def test_real_tmux_preserves_cached_images_with_native_support_or_fallback(tmp_p
     '''))
     shell = shlex.join([sys.executable, str(script), str(marker)])
     process = subprocess.Popen(
-        ["tmux", "-vv", "-L", socket, "-f", "/dev/null", "new-session", "-s", "repro", shell],
+        ["tmux", "-vv", "-L", socket, "-f", str(config), "new-session", "-s", "repro", shell],
         stdin=slave, stdout=slave, stderr=slave, env=env, cwd=tmp_path,
     )
     os.close(slave)
@@ -100,7 +103,22 @@ def test_real_tmux_preserves_cached_images_with_native_support_or_fallback(tmp_p
         report = json.loads(marker.read_text())
         expected_native = advertised and report["built"] == "1" and outer != "WezTerm"
         assert report["sixel"] == expected_native
-        if expected_native:
+        if outer == "WezTerm" and passthrough:
+            packets = re.findall(rb"\x1b_G([^;\x1b]*);([A-Za-z0-9+/=]*)\x1b\\", output)
+            pngs, chunks = [], []
+            for header, data in packets:
+                assert b"q=2" in header, "graphics must not leave replies in shell input"
+                if b"a=T" in header:
+                    chunks = []
+                    assert b"f=100" in header
+                chunks.append(data)
+                if b"m=0" in header:
+                    pngs.append(base64.b64decode(b"".join(chunks)))
+            assert len(pngs) >= 2, "initial and async image must use high-resolution PNG, not half cells"
+            image = Image.open(BytesIO(pngs[-1]))
+            assert image.width >= 200 and image.height >= 160
+            assert len(image.getcolors(maxcolors=100_000) or []) > 256
+        elif expected_native:
             assert b'"1;1;' in output, "tmux must pass native image pixels to the outer terminal"
             assert len(set(re.findall(rb"#[0-9]+;2;[0-9;]+", output))) > 16
             # tmux retains native images independently of Textual's blank text

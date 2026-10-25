@@ -32,7 +32,7 @@ Homebrew 提供 macOS arm64 / x86_64 的 **PyInstaller 独立二进制**，无�
 - `f` 全屏正文，`q` 返回、书架退出，`Ctrl+l` 重绘页面与图片。
 
 自动主题读取终端配色；正文靠左，最大 96 列。书架封面与插图异步加载并缓存到磁盘，默认上限 512 MiB。
-tmux 内外共用缓存；WezTerm + tmux 使用稳定的彩色半块图片，直连 WezTerm 保留高清位图。其它 tmux 连接校验原生图片能力后选择渲染方式。
+tmux 内外共用缓存；WezTerm + tmux 已开启透明传输时显示高清 PNG，直连保留高清位图。其它连接按图形能力选择原生图片或彩色半块预览。
 macOS 缓存位于 `~/Library/Caches/lector/images/`，Linux 位于 `~/.cache/lector/images/`。
 完整键位、缓存配置、播放器要求与 tmux 说明见 [terminal/README.md](terminal/README.md)。
 
