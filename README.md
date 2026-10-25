@@ -62,8 +62,9 @@ lector
 ```
 
 终端默认连接 `https://navydev.top/ebook`，自动跟随终端 ANSI 配色，也支持
-`dracula`、`catppuccin-*` 等主题。开发时可在 `terminal/` 内执行 `uv sync`，
-键位与主题设置见 [terminal/README.md](terminal/README.md)。
+`dracula`、`catppuccin-*` 等主题；正文采用窄长布局并支持 EPUB 内嵌图片。
+开发时可在 `terminal/` 内执行 `uv sync`，键位与主题设置见
+[terminal/README.md](terminal/README.md)。
 
 ## 添加书籍
 

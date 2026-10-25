@@ -127,16 +127,19 @@ class LectorApp(App):
     }
 
     #text-pane {
-        width: 1fr;
+        width: 82%;
+        max-width: 72;
         height: auto;
-        max-height: 26;
+        max-height: 34;
         overflow-y: auto;
-        padding: 0 2;
+        padding: 0 3;
         border-top: solid $panel;
         border-bottom: solid $panel;
     }
 
     Screen.fullscreen #text-pane {
+        width: 100%;
+        max-width: 100%;
         max-height: 100%;
         border-top: none;
         border-bottom: none;
@@ -169,17 +172,15 @@ class LectorApp(App):
     }
 
     .sentence-current {
-        background: $accent 35%;
-        text-style: bold;
+        text-style: bold underline;
     }
 
     .word-read {
-        background: $panel;
+        text-style: dim;
     }
 
     .word-now {
-        background: $accent 55%;
-        text-style: bold;
+        text-style: reverse bold;
     }
 
     .help-key {

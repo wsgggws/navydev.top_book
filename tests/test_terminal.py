@@ -91,6 +91,50 @@ def test_terminal_check_mode_connects_without_a_token(
     assert "1 books" in output
 
 
+def test_terminal_renders_an_epub_image(server):
+    import io
+    import zipfile
+
+    import httpx
+    from factories import build_epub2
+    from lector_tui.app import LectorApp
+    from PIL import Image
+
+    payload = build_epub2(
+        chapters=[
+            (
+                "插图",
+                '<p>图片下面的正文。</p><img src="images/f1.jpg" alt="测试插图"/>',
+            )
+        ]
+    )
+    image = Image.new("RGB", (8, 8), "red")
+    png = io.BytesIO()
+    image.save(png, format="PNG")
+    source = zipfile.ZipFile(io.BytesIO(payload))
+    fixed = io.BytesIO()
+    with source, zipfile.ZipFile(fixed, "w", zipfile.ZIP_DEFLATED) as target:
+        for item in source.infolist():
+            data = png.getvalue() if item.filename.endswith("f1.jpg") else source.read(item)
+            target.writestr(item, data)
+    payload = fixed.getvalue()
+    httpx.post(
+        f"{server}/api/v1/books",
+        files={"file": ("image.epub", payload, "application/epub+zip")},
+    )
+
+    async def scenario():
+        app = LectorApp(base_url=server, token="")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("enter")
+            await pilot.pause(1.0)
+            chapter = app.screen.query_one("ChapterText")
+            assert chapter.images
+
+    asyncio.run(scenario())
+
+
 def test_terminal_moves_the_cursor(server, epub2_bytes: bytes):
     """Arrow keys move the one cursor."""
     from lector_tui.app import LectorApp

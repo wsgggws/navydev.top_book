@@ -32,6 +32,7 @@ class AudioPlayer:
 
     backend: str | None = None
     rate: float = 1.0
+    effective_rate: float = 1.0
     workdir: Path | None = None
     _process: subprocess.Popen | None = None
     _tempdir: str | None = None
@@ -80,6 +81,7 @@ class AudioPlayer:
         if not self.available:
             raise RuntimeError("没有可用的音频播放器")
         adjusted = self._adjust_rate(path)
+        self.effective_rate = self.rate if adjusted != path else 1.0
         self._process = subprocess.Popen(
             self._command(adjusted),
             stdout=subprocess.DEVNULL,

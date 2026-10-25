@@ -98,6 +98,16 @@ class ApiClient:
     def get_words(self, book_id: str, sentence_id: str) -> dict:
         return self.request(f"/books/{book_id}/audio/{quote(sentence_id)}.words")
 
+    def fetch_media(self, book_id: str, path: str) -> bytes:
+        """Download one image embedded in an EPUB."""
+        media_path = quote(path.lstrip("/"), safe="/")
+        request = Request(
+            f"{self.base_url.rstrip('/')}/api/v1/books/{book_id}/media/{media_path}",
+            headers=self._headers(),
+        )
+        with urlopen(request, timeout=60, context=self._ssl_context()) as response:
+            return response.read()
+
     def download_audio(self, book_id: str, sentence_id: str, target: str) -> str:
         """Download one sentence tile to a local file."""
         request = Request(self.audio_url(book_id, sentence_id), headers=self._headers())

@@ -18,6 +18,7 @@ from textual.events import Key
 from textual.widgets import Footer, Input, ListItem, ListView, Static
 
 from lector_tui.config import ProgressStore
+from lector_tui.images import render_terminal_image
 from lector_tui.widgets import VimListView
 
 #: How many columns the directory takes.
@@ -69,9 +70,15 @@ class ChapterText(Static):
         self.current_sentence: str | None = None
         self.words: list[dict] = []
         self.word_index: int = -1
+        self.images: dict[str, Text] = {}
 
     def set_chapter(self, chapter: dict) -> None:
         self.chapter = chapter
+        self.images = {}
+        self.refresh_content()
+
+    def set_images(self, images: dict[str, Text]) -> None:
+        self.images = images
         self.refresh_content()
 
     def set_cursor(self, sentence_id: str) -> None:
@@ -112,8 +119,13 @@ class ChapterText(Static):
         while index < len(blocks):
             block = blocks[index]
             if block.get("type") == "img":
+                preview = self.images.get(block.get("id", ""))
+                if preview is not None:
+                    text.append_text(preview)
                 if block.get("alt"):
                     text.append(f"[图：{block['alt']}]\n", style=Style(dim=True))
+                elif preview is None:
+                    text.append("[图]\n", style=Style(dim=True))
                 index += 1
                 continue
             if block.get("type") == "hr":
@@ -252,6 +264,7 @@ class BaseReaderScreen(Screen):
         self._hits: list[dict] = []
         self._hit_index = -1
         self._pane_mode = "toc"
+        self.image_cache: dict[str, Text] = {}
 
     # -- layout ----------------------------------------------------------
     def compose(self) -> ComposeResult:
@@ -334,7 +347,50 @@ class BaseReaderScreen(Screen):
         self.sentence_index = index
         self.query_one(ChapterText).set_chapter(self.chapter)
         self.set_cursor(index)
+        self.load_chapter_images(chapter_id)
         self.update_status()
+
+    def load_chapter_images(self, chapter_id: str) -> None:
+        """Load image previews without blocking the terminal UI."""
+        blocks = [
+            block
+            for block in (self.chapter or {}).get("blocks", [])
+            if block.get("type") == "img" and block.get("src")
+        ]
+        if not blocks:
+            return
+
+        def worker() -> None:
+            previews: dict[str, Text] = {}
+            for block in blocks:
+                src = str(block["src"])
+                key = f"{self.book_id}:{src}"
+                preview = self.image_cache.get(key)
+                if preview is None:
+                    try:
+                        data = self.app.api.fetch_media(self.book_id, src)
+                        preview = render_terminal_image(data)
+                    except Exception:  # noqa: BLE001 - one bad image cannot break reading
+                        preview = None
+                    if preview is not None:
+                        self.image_cache[key] = preview
+                if preview is not None:
+                    previews[str(block["id"])] = preview
+            try:
+                self.app.call_from_thread(self._apply_chapter_images, chapter_id, previews)
+            except Exception:  # noqa: BLE001 - the screen may already be closed
+                pass
+
+        self.run_worker(worker, group="chapter-images", exclusive=True, thread=True)
+
+    def _apply_chapter_images(self, chapter_id: str, previews: dict[str, Text]) -> None:
+        if not self.chapter or self.chapter.get("chapter_id") != chapter_id:
+            return
+        try:
+            self.query_one(ChapterText).set_images(previews)
+            self.scroll_to_cursor()
+        except Exception:  # noqa: BLE001 - the screen may already be closed
+            pass
 
     # -- cursor ----------------------------------------------------------
     @property
@@ -705,6 +761,7 @@ class ListenScreen(BaseReaderScreen):
         self.playing = False
         self._timer = None
         self._clock = None
+        self._last_word_index: int | None = None
 
     def compose(self) -> ComposeResult:
         with Vertical():
@@ -777,6 +834,10 @@ class ListenScreen(BaseReaderScreen):
     def _play_current(self) -> None:
         from lector_tui.audio import Clock
 
+        if self._timer is not None:
+            self._timer.stop()
+            self._timer = None
+        self.app.audio.stop()
         sentence = self.current_sentence
         if sentence is None:
             self.stop_playback()
@@ -794,6 +855,8 @@ class ListenScreen(BaseReaderScreen):
             payload = {"words": [], "granularity": "sentence"}
         self.words = payload.get("words", [])
         self.granularity = payload.get("granularity", "sentence")
+        self._last_word_index = 0 if self.words else -1
+        self.query_one(ChapterText).set_words(self.words, self._last_word_index)
         try:
             self.app.audio.play(str(target))
         except Exception as exc:  # noqa: BLE001
@@ -834,14 +897,16 @@ class ListenScreen(BaseReaderScreen):
         """Advance the word highlight and the sentence."""
         if not self.playing or self._clock is None:
             return
-        elapsed = self._clock.elapsed
+        elapsed = self._clock.elapsed * self.app.audio.effective_rate
         words = getattr(self, "words", [])
         index = -1
         for position, word in enumerate(words):
             if elapsed >= word.get("start", 0) and elapsed < word.get("end", 0):
                 index = position
                 break
-        self.query_one(ChapterText).set_words(words, index)
+        if index != self._last_word_index:
+            self._last_word_index = index
+            self.query_one(ChapterText).set_words(words, index)
         if self.app.audio._process is not None and self.app.audio._process.poll() is not None:
             self._advance()
 
@@ -879,7 +944,7 @@ class ListenScreen(BaseReaderScreen):
         chapter_title = self.chapter.get("title", "") if self.chapter else ""
         words = getattr(self, "words", [])
         position = getattr(self, "_clock", None)
-        elapsed = position.elapsed if position else 0.0
+        elapsed = position.elapsed * self.app.audio.effective_rate if position else 0.0
         preview = sentence["text"][:56] if sentence else ""
         marker = "▶" if self.playing else "⏸"
         bar_width = 30

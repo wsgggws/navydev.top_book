@@ -28,3 +28,15 @@ def test_builtin_theme_names_are_accepted():
     assert app.theme == "catppuccin-mocha"
     assert app.theme_preference == "catppuccin-mocha"
     app.audio.cleanup()
+
+
+def test_reader_highlight_avoids_background_colours_and_narrows_the_page():
+    from lector_tui.app import LectorApp
+
+    css = LectorApp.CSS
+    assert "text-style: reverse bold" in css
+    assert "text-style: bold underline" in css
+    assert "width: 82%;" in css
+    assert "max-width: 72;" in css
+    assert "background: $accent 35%" not in css
+    assert "background: $accent 55%" not in css
