@@ -28,6 +28,7 @@ from lector.config import (
     DEFAULT_VOICE_BY_LOCALE,
     FEATURED_VOICES,
     PARSER_VERSION,
+    SCOPE_PUBLIC,
     Settings,
     ensure_dirs,
     load_settings,
@@ -164,7 +165,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "featured_voices": list(FEATURED_VOICES),
             "default_voices": dict(DEFAULT_VOICE_BY_LOCALE),
             "default_rates": dict(DEFAULT_RATE_BY_LOCALE),
-            "scope": parse_token(settings.token).scope,
+            "scope": parse_token(settings.token).scope if settings.token else SCOPE_PUBLIC,
         }
 
     web_dir = Path(settings.web_dir)
@@ -291,8 +292,8 @@ def main() -> None:
     sync_seed_books(app.state.ctx.store, settings.seed_books_dir)
     if not settings.token and settings.host not in ("127.0.0.1", "localhost", "::1"):
         logger.warning(
-            "LECTOR_TOKEN 未设置，服务将向 %s 开放且任何人都能读写全部书籍。"
-            "线上部署请务必设置令牌，或把 LECTOR_HOST 收回 127.0.0.1 并交给反向代理。",
+            "LECTOR_TOKEN 未设置：阅读和终端访问正常，管理写接口已禁用；"
+            "书籍由仓库 books/ 在启动时导入。监听地址：%s。",
             settings.host,
         )
     uvicorn.run(

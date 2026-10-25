@@ -32,7 +32,10 @@ DEFAULT_VOICE = "zh-CN-YunxiNeural"
 #: 不能上传/删除书、不能清缓存或预热音频。
 SCOPE_ADMIN = "admin"
 SCOPE_READER = "reader"
+SCOPE_PUBLIC = "public"
 SCOPES = (SCOPE_ADMIN, SCOPE_READER)
+
+LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost", "::1", "testserver"})
 
 #: 每种语言默认读哪个音色。中英文都默认使用男声。
 DEFAULT_VOICE_BY_LOCALE = {
@@ -95,6 +98,16 @@ def _env_int(name: str, fallback: int) -> int:
         return int(raw)
     except ValueError:
         return fallback
+
+
+def is_local_host(value: str | None) -> bool:
+    """Whether a Host header names the local development machine."""
+    host = (value or "").strip().lower()
+    if host.startswith("["):
+        host = host[1:].split("]", 1)[0]
+    elif ":" in host:
+        host = host.rsplit(":", 1)[0]
+    return host in LOCAL_HOSTS
 
 
 def load_settings(data_dir: Path | str | None = None) -> Settings:

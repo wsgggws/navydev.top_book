@@ -19,12 +19,12 @@ brew install wsgggws/ebook/lector
 运行：
 
 ```bash
-LECTOR_TOKEN="服务端 token 的密钥部分" lector
+lector
 ```
 
-不配置 token 也可读取公开内容；token 会以 Bearer 方式发送。
-如果服务端配置为 `LECTOR_TOKEN=secret:reader`，客户端应填写 `secret`
-（不要带 `:reader` 或 `:admin` 权限后缀）。
+终端通过请求头 `X-Lector-Client: terminal` 标识自己，默认线上服务不需要
+`LECTOR_TOKEN`。只有连接启用令牌的私有服务时才需要 token；如果服务端配置为
+`LECTOR_TOKEN=secret:reader`，客户端应填写 `secret`（不要带权限后缀）。
 
 ```bash
 lector --url https://navydev.top/ebook --token "$LECTOR_TOKEN"

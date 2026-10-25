@@ -11,7 +11,7 @@ from fastapi import Request
 
 from lector.api.errors import ApiError
 from lector.audio import AudioService
-from lector.config import SCOPE_ADMIN, SCOPE_READER, SCOPES, Settings
+from lector.config import SCOPE_ADMIN, SCOPE_READER, SCOPES, Settings, is_local_host
 from lector.db import Database
 from lector.store import Store
 from lector.tts.base import TTSEngine
@@ -100,6 +100,12 @@ def _credentials(request: Request) -> Credentials:
     ctx = get_context(request)
     configured = ctx.settings.token
     if not configured:
+        if not is_local_host(request.headers.get("host")):
+            raise ApiError(
+                403,
+                "ADMIN_DISABLED",
+                "服务端未配置 LECTOR_TOKEN，管理写接口已禁用",
+            )
         return Credentials(token="", scope=SCOPE_ADMIN)
     header = request.headers.get("authorization", "")
     if not header.lower().startswith("bearer "):

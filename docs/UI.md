@@ -334,7 +334,7 @@ CSS 自定义属性，定义在 `web/styles/tokens.css`。三套主题只覆盖�
 | --- | --- |
 | `Enter` | 打开选中的书 |
 | `r` | 刷新书架 |
-| `c` | 连接另一台服务器（输入地址与令牌，记在 `~/.config/lector/reader.json`） |
+| `c` | 连接另一台服务器（地址必填，令牌可空，记在 `~/.config/lector/reader.json`） |
 | `q` / `Ctrl+C` | 退出 |
 
 ### 8.2 阅读屏与听书屏

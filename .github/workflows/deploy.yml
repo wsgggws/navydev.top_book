@@ -64,14 +64,8 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Package release
-        env:
-          LECTOR_TOKEN: ${{ secrets.LECTOR_TOKEN }}
         run: |
           set -euo pipefail
-          test -n "${LECTOR_TOKEN}" || {
-            echo "::error::缺少 GitHub Actions secret: LECTOR_TOKEN"
-            exit 1
-          }
 
           mkdir -p release
           tar \
@@ -91,7 +85,6 @@ jobs:
 
           umask 077
           {
-            printf 'LECTOR_TOKEN=%s\n' "${LECTOR_TOKEN}"
             printf 'LECTOR_TTS_ENGINE=edge\n'
             printf 'LECTOR_IMAGE=ghcr.nju.edu.cn/%s:%s\n' "${GITHUB_REPOSITORY}" "${GITHUB_SHA}"
           } > release/lector.env
@@ -126,7 +119,6 @@ jobs:
             STAGING_PATH="${HOME}/${STAGING_PATH}"
             test -s "${STAGING_PATH}/app.tgz"
             test -s "${STAGING_PATH}/lector.env"
-            grep -Eq '^LECTOR_TOKEN=.+$' "${STAGING_PATH}/lector.env"
             grep -Eq '^LECTOR_IMAGE=.+$' "${STAGING_PATH}/lector.env"
 
             command -v docker >/dev/null || {

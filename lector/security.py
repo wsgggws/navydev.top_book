@@ -10,6 +10,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
 from lector.api.deps import parse_token
+from lector.config import is_local_host
 
 _CLI_USER_AGENT = re.compile(
     r"(?:curl|wget|python-requests|httpx|httpie|postmanruntime|"
@@ -41,7 +42,10 @@ def install_security(app: FastAPI) -> None:
         settings = request.app.state.ctx.settings
         path = request.url.path
 
-        if settings.token:
+        guard_enabled = bool(settings.token) or not is_local_host(
+            request.headers.get("host")
+        )
+        if guard_enabled:
             user_agent = request.headers.get("user-agent", "")
             cli_client = not user_agent or _CLI_USER_AGENT.search(user_agent)
             relative = _relative_path(path, settings.base_path)
@@ -59,7 +63,7 @@ def install_security(app: FastAPI) -> None:
                 )
 
         if (
-            settings.token
+            guard_enabled
             and request.method in _UNSAFE_METHODS
             and _is_api_path(path, settings.base_path)
             and not _has_valid_token(request)

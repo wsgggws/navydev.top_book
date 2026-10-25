@@ -13,7 +13,7 @@
 | 时间 | ISO-8601 UTC，字符串形式 `2026-10-24T08:00:00Z` |
 | 时长 | 数值，**秒**（float）。`duration_ms` 除外，仅在需要毫秒精度时使用 |
 | ID | 字符串。`book_id` 形如 `b_9f3a2c1d`；章节 `c{index}`；块 `c12.b3`；句 `c12.b3.s0` |
-| 鉴权 | 阅读接口公开。上传、删除、预热/清理音频等管理写操作在配置 `LECTOR_TOKEN` 后要求 `Authorization: Bearer <token>` |
+| 鉴权 | 阅读接口公开。上传、删除、预热/清理音频等管理写操作需要 `LECTOR_TOKEN`；未配置时仅在本地开发主机可用 |
 | 分页 | 列表接口用 `?limit=&offset=`，`limit` 默认 50、上限 200 |
 | 排序 | 书籍列表默认按 `open_count DESC, updated_at DESC`；不接受客户端自定义排序参数 |
 
@@ -46,6 +46,7 @@
 | 400 | `BAD_REQUEST` | 请求体无法解析或参数非法 | 展示 `message`，不重试 |
 | 401 | `UNAUTHORIZED` | 管理写操作缺少或错误的 Bearer token | 只在管理操作时提示 token |
 | 403 | `FORBIDDEN` | 令牌有效但权限不够（如 reader 令牌想上传） | 换个权限更高的令牌 |
+| 403 | `ADMIN_DISABLED` | 未配置 `LECTOR_TOKEN` 且通过公网域名访问管理接口 | 在仓库 `books/` 添加内容，或配置管理令牌 |
 | 403 | `BROWSER_ONLY` | 明显的命令行客户端请求网页 | 用浏览器打开 |
 | 403 | `SAME_ORIGIN_REQUIRED` | 无有效 Bearer token 的写请求缺少同源浏览器来源 | 从网页发起，或使用管理 token |
 | 404 | `NOT_FOUND` | 资源不存在 | 返回书架 |
@@ -62,11 +63,14 @@
 ### 0.4 线上部署与终端接入
 
 书籍、章节、搜索、封面、音频等阅读接口**不需要令牌**，任何人都可以访问。
-`LECTOR_TOKEN` 只用于管理写操作；生产环境仍建议配置，防止上传、删除或清缓存。
+线上服务默认不配置 `LECTOR_TOKEN`，此时上传、删除、预热/清理音频等管理写接口
+返回 `403 ADMIN_DISABLED`；书籍通过仓库的 `books/` 在启动时导入。
+
+本机 `127.0.0.1` / `localhost` 开发环境仍允许无 token 的上传和删除，方便
+`make book`。一旦通过公网 Host 访问，管理接口即禁用。
 
 ```bash
 # 服务端
-export LECTOR_TOKEN="$(openssl rand -hex 24)"
 export LECTOR_HOST=127.0.0.1        # 交给反向代理，不直接暴露
 export LECTOR_PORT=8000
 uv run lector-server
@@ -78,7 +82,7 @@ uv run lector-server
 终端 ──https──▶ 反向代理 ──http──▶ lector.web:app (127.0.0.1:8000)
 ```
 
-终端端只读书，不需要令牌：
+终端端只读书，通过独立请求头 `X-Lector-Client: terminal` 标识，不需要令牌：
 
 ```bash
 # 一次性：环境变量
@@ -94,17 +98,18 @@ uv run lector
 
 按客户端 IP：上传接口 10 次/分钟，其余读接口 600 次/分钟。超限返回 429 与 `Retry-After`（秒）。写接口命中限流时**不做**自动重试。
 
-配置 `LECTOR_TOKEN` 后还启用以下浏览器防护：
+公网 Host 下启用以下浏览器防护：
 
 - 网页、静态资源和公开 API 拒绝明显的 `curl`、`wget`、`python-requests`、
   `httpx` 等命令行 User-Agent；这是降低脚本滥用的基础措施，不能替代鉴权。
-- 健康检查、带有效 Bearer token 的 CLI，以及带 `X-Lector-Client: terminal`
-  的官方终端客户端不受上述 User-Agent 拦截。
+- 健康检查与带 `X-Lector-Client: terminal` 的官方终端客户端不受上述
+  User-Agent 拦截。
+- 配置 `LECTOR_TOKEN` 后，带有效 Bearer token 的 CLI 同样放行。
 - 无有效 Bearer token 的 `POST`/`PUT`/`PATCH`/`DELETE` 必须带同源
   `Origin` 或 `Referer`，且 `Sec-Fetch-Site` 不得为跨站。
 - 响应统一带 CSP、`X-Frame-Options: SAMEORIGIN`、`nosniff`、Referrer Policy 与
   Permissions Policy。
-- 公开只读 API 仍允许终端客户端访问；需要管理写权限的 CLI 必须使用 Bearer token。
+- 公开只读 API 允许终端客户端访问；需要管理写权限时使用 Bearer token。
 
 ---
 
@@ -226,7 +231,7 @@ uv run lector
 }
 ```
 
-- `scope` 是这个令牌拿到的权限：`admin` 或 `reader`。
+- `scope` 是当前访问权限：`public`（未配置令牌）、`admin` 或 `reader`。
 
 - `featured_voices` 是**界面上应当提供的常用音色**：中文（zh-CN）、美式（en-US）、英式（en-GB）各若干。引擎本身还有三百多个音色，`/tts/voices` 全部返回，客户端按需自选。
 - `default_voices` 是**按语言分的默认音色**：中文书用中文男声，英文书用美式男声。客户端不要自己猜，按这份表来。
@@ -252,8 +257,9 @@ uv run lector
 
 ### `POST /api/v1/books`
 
-上传 EPUB，仅用于管理。`multipart/form-data`，需要 admin 令牌。普通书架内容通过
-仓库的 `books/*.epub` 在服务启动时自动导入，网页不提供上传入口。字段：
+上传 EPUB，仅用于管理。`multipart/form-data`，需要 admin 令牌（本机开发环境
+例外）。普通书架内容通过仓库的 `books/*.epub` 在服务启动时自动导入，
+网页不提供上传入口。字段：
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
@@ -287,7 +293,8 @@ uv run lector
 
 ### `DELETE /api/v1/books/{book_id}`
 
-删除书籍、其解析产物与音频缓存。需要 admin 令牌。返回 `204`。不存在时 `404`。
+删除书籍、其解析产物与音频缓存。需要 admin 令牌（本机开发环境例外）。
+返回 `204`。不存在时 `404`。
 
 ### `POST /api/v1/books/{book_id}/open`
 
@@ -300,8 +307,8 @@ uv run lector
 - 公开接口，不需要令牌。
 - 每次成功调用把该书 `open_count` 加一；书籍不存在返回 `404`。
 - 客户端只在用户主动打开书籍时调用；直接刷新书籍 URL 或浏览器前进/后退不计数。
-- 配置了 `LECTOR_TOKEN` 时，浏览器写请求还必须带同源 `Origin` 或 `Referer`；
-  带有效 Bearer token 的 CLI 管理请求可以不带。
+- 公网 Host 下的写请求必须带同源 `Origin` 或 `Referer`；带有效 Bearer
+  token 的管理 CLI 可以不带。
 
 ### `GET /api/v1/books/{book_id}/cover`
 

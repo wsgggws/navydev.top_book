@@ -6,10 +6,10 @@ class Lector < Formula
   url "https://github.com/wsgggws/navydev.top_ebook/releases/download/terminal-v1.1.0/lector_tui-1.1.0.tar.gz"
   sha256 "343f5f316a4d99ac2cdc2b38c37f30738a4886fa88bbc0ccf9610384b57327fb"
 
-  depends_on "python@3.12"
+  depends_on "python@3.14"
 
   def install
-    venv = virtualenv_create(libexec, "python3.12")
+    venv = virtualenv_create(libexec, "python3.14")
     venv.pip_install_and_link buildpath
   end
 

@@ -27,9 +27,9 @@
 | `REMOTE_IP` | 服务器 IP 或域名 |
 | `SSH_USER` | 部署用的 SSH 用户 |
 | `SSH_PRIVATE_KEY` | 该用户对应私钥文件的**完整内容** |
-| `LECTOR_TOKEN` | 服务端访问令牌，建议 `<随机值>:admin` |
 
-`LECTOR_TOKEN` 只保护管理写操作；书籍、章节、搜索、封面和音频等阅读接口公开。
+线上服务默认不配置 `LECTOR_TOKEN`。阅读、搜索和终端访问公开；上传、删除、
+音频预热/清理等管理写接口在公网 Host 下禁用，书籍通过仓库的 `books/` 发布。
 
 `SSH_PRIVATE_KEY` 不是 `.pub` 公钥。要复制私钥文件的完整内容，包括：
 
@@ -52,7 +52,6 @@ ssh-copy-id -i ~/.ssh/navydev_top_ebook_deploy.pub user@server
 gh secret set SSH_PRIVATE_KEY < ~/.ssh/navydev_top_ebook_deploy
 gh secret set REMOTE_IP --body "server-ip"
 gh secret set SSH_USER --body "user"
-gh secret set LECTOR_TOKEN --body "随机令牌:admin"
 ```
 
 私钥文件权限应为 600：
@@ -102,7 +101,6 @@ chmod 600 ~/.ssh/navydev_top_ebook_deploy
 `.env` 内容只有运行时配置，例如：
 
 ```dotenv
-LECTOR_TOKEN=<你的令牌>
 LECTOR_TTS_ENGINE=edge
 LECTOR_IMAGE=ghcr.nju.edu.cn/wsgggws/navydev.top_ebook:<git-sha>
 ```
@@ -236,7 +234,7 @@ uv run lector
 
 ## 10. 注意事项
 
-- 阅读接口公开；仍建议配置 `LECTOR_TOKEN`，避免管理写接口被匿名调用。
+- 阅读接口公开；线上未配置 `LECTOR_TOKEN` 时管理写接口禁用，书籍通过仓库发布。
 - 上传上限 50MB，nginx 的 `client_max_body_size` 要留出余量。
 - 音频 URL 的内容由文本、音色、倍速与引擎版本共同决定，可长期缓存。
 - 换音色后不必手工删旧文件；缓存键变了，旧缓存只是不再命中。

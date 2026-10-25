@@ -97,8 +97,10 @@ make book books/my.epub
 - **依赖白名单**：`fastapi`、`uvicorn`、`pydantic`、`edge-tts`、`textual`、
   `pytest`、`httpx`、`python-multipart`。新增依赖必须说明标准库为何不够，
   并更新契约或提交说明。`python-multipart` 是 FastAPI 解析上传表单所必需。
-- **权限**：阅读 API 公开；上传/删除/预热/清缓存需要 admin token。令牌支持
-  `<token>:admin` 和 `<token>:reader`；终端只读。
+- **权限**：阅读 API 公开；公网 Host 下上传/删除/预热/清缓存需要 admin token，
+  未配置时返回 `ADMIN_DISABLED`；本机开发 Host 例外。终端只读，通过
+  `X-Lector-Client: terminal` 标识且不需要 token。令牌支持
+  `<token>:admin` 和 `<token>:reader`。
 - **浏览器防护**：生产 Nginx 和应用层拦截明显的 CLI User-Agent；健康检查、
   带 `X-Lector-Client: terminal` 的终端、带 Bearer token 的管理请求例外。
   无 token 的写请求必须同源。防护不能替代 token。

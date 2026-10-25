@@ -57,7 +57,7 @@ make book books/my.epub
 ```bash
 brew tap wsgggws/ebook https://github.com/wsgggws/navydev.top_ebook
 brew install wsgggws/ebook/lector
-LECTOR_TOKEN="服务端 token 的密钥部分" lector
+lector
 ```
 
 终端默认连接 `https://navydev.top/ebook`，自动跟随终端 ANSI 配色，也支持
@@ -100,7 +100,7 @@ Markdown 源格式见 [AGENTS.md](AGENTS.md)。
 | --- | --- | --- |
 | `LECTOR_DATA_DIR` | `./data` | SQLite、书籍副本和音频缓存 |
 | `LECTOR_BOOKS_DIR` | `./books` | 启动时导入的 EPUB 目录 |
-| `LECTOR_TOKEN` | 空 | 管理写入令牌；配置后同时启用浏览器/同源防护 |
+| `LECTOR_TOKEN` | 空 | 可选管理令牌；未配置时公网管理写接口禁用 |
 | `LECTOR_HOST` | `127.0.0.1` | 监听地址；设置 token 后默认 `0.0.0.0` |
 | `LECTOR_PORT` | `8000` | 监听端口 |
 | `LECTOR_BASE_PATH` | 空 | HTTP 前缀；生产环境为 `/ebook` |
@@ -129,10 +129,10 @@ Markdown 源格式见 [AGENTS.md](AGENTS.md)。
 
 ## 安全与部署
 
-- 阅读 API 公开；上传、删除、音频预热/清理需要 admin token
+- 阅读 API 公开；未配置 token 时，上传、删除、音频预热/清理等管理写接口禁用
 - Nginx 拦截明显的 `curl`、`wget`、`python-requests`、`httpx` 等客户端
-- 健康检查、带 `X-Lector-Client: terminal` 的官方终端、带 Bearer token 的
-  管理请求例外
+- 健康检查、带 `X-Lector-Client: terminal` 的官方终端不需要 token
+- 本地 `127.0.0.1` 开发环境允许管理写入；线上域名未配置 token 时禁用管理写接口
 - 无 token 的写请求必须带同源 `Origin` 或 `Referer`
 - 这些是基础防护，不能替代 token 和 HTTPS
 
@@ -142,7 +142,7 @@ Markdown 源格式见 [AGENTS.md](AGENTS.md)。
 
 ```bash
 cp deploy/env.example .env
-# 编辑 .env，设置随机 LECTOR_TOKEN
+# 按需编辑 .env；线上默认不配置 LECTOR_TOKEN
 make docker-run
 ```
 

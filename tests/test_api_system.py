@@ -3,6 +3,7 @@
 def test_meta_lists_the_featured_voices(client):
     """The interface offers a handful of familiar voices."""
     payload = client.get("/api/v1/meta").json()
+    assert payload["scope"] == "public"
     assert payload["default_voice"] == "zh-CN-YunxiNeural"
     assert payload["default_voices"] == {
         "zh": "zh-CN-YunxiNeural",

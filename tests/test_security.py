@@ -53,6 +53,46 @@ def test_public_api_allows_browser_terminal_and_admin_cli(settings, engine):
     ).status_code == 200
 
 
+def test_public_host_without_a_token_allows_reads_but_disables_admin(
+    settings, engine, epub2_bytes: bytes
+):
+    from lector.web import create_app
+
+    public = settings.__class__(**{**settings.__dict__, "token": "", "host": "0.0.0.0"})
+    app = create_app(public)
+    app.state.ctx.engine = engine
+    app.state.ctx.audio.engine = engine
+    client = TestClient(app)
+    domain_headers = {"Host": "navydev.top", "User-Agent": "Mozilla/5.0"}
+
+    assert client.get("/", headers=domain_headers).status_code == 200
+    assert client.get("/api/v1/books", headers=domain_headers).status_code == 200
+    assert client.get(
+        "/api/v1/books",
+        headers={"Host": "navydev.top", "User-Agent": "curl/8.10.1"},
+    ).status_code == 403
+    assert client.get(
+        "/api/v1/books",
+        headers={
+            "Host": "navydev.top",
+            "User-Agent": "python-httpx/1.0",
+            "X-Lector-Client": "terminal",
+        },
+    ).status_code == 200
+
+    upload = client.post(
+        "/api/v1/books",
+        files={"file": ("book.epub", epub2_bytes, "application/epub+zip")},
+        headers={
+            "Host": "navydev.top",
+            "Origin": "https://navydev.top",
+            "User-Agent": "Mozilla/5.0",
+        },
+    )
+    assert upload.status_code == 403
+    assert upload.json()["error"]["code"] == "ADMIN_DISABLED"
+
+
 def test_writes_require_same_origin_or_a_valid_token(
     settings, engine, epub2_bytes: bytes
 ):
