@@ -1,15 +1,15 @@
 class Lector < Formula
   desc "Read-only terminal client for navydev.top/ebook"
   homepage "https://navydev.top/ebook"
-  version "1.3.5"
+  version "1.3.6"
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/wsgggws/navydev.top_ebook/releases/download/terminal-v1.3.5/lector-macos-arm64.tar.gz"
-      sha256 "7707fd6568cccbf1aafcc8f3a22fe5bdfcefed7bd5bf2730e25aa7780926f69e"
+      url "https://github.com/wsgggws/navydev.top_ebook/releases/download/terminal-v1.3.6/lector-macos-arm64.tar.gz"
+      sha256 "d6d3974822e3bb75b96ee42e9fb0b74f0586ba519257f52f25369f02d9aa9be2"
     else
-      url "https://github.com/wsgggws/navydev.top_ebook/releases/download/terminal-v1.3.5/lector-macos-x86_64.tar.gz"
-      sha256 "d165a50bc3bcf26b2a3f7e645d728e71a56a22e3953839056efae0e5bb177730"
+      url "https://github.com/wsgggws/navydev.top_ebook/releases/download/terminal-v1.3.6/lector-macos-x86_64.tar.gz"
+      sha256 "1e50a2399625e175e41e64d03d758ab1cb83c7575fd018521405e0ddaa3412e3"
     end
   end
 
@@ -18,6 +18,6 @@ class Lector < Formula
   end
 
   test do
-    assert_match "lector 1.3.5", shell_output("#{bin}/lector --version")
+    assert_match "lector 1.3.6", shell_output("#{bin}/lector --version")
   end
 end
