@@ -7,6 +7,9 @@ between them never loses the place.
 
 from __future__ import annotations
 
+from typing import Any
+
+from rich.console import Group
 from rich.style import Style
 from rich.text import Text
 
@@ -18,7 +21,7 @@ from textual.events import Key
 from textual.widgets import Footer, Input, ListItem, ListView, Static
 
 from lector_tui.config import ProgressStore
-from lector_tui.images import render_terminal_image
+from lector_tui.images import render_chapter_image
 from lector_tui.widgets import VimListView
 
 #: How many columns the directory takes.
@@ -70,14 +73,14 @@ class ChapterText(Static):
         self.current_sentence: str | None = None
         self.words: list[dict] = []
         self.word_index: int = -1
-        self.images: dict[str, Text] = {}
+        self.images: dict[str, Any] = {}
 
     def set_chapter(self, chapter: dict) -> None:
         self.chapter = chapter
         self.images = {}
         self.refresh_content()
 
-    def set_images(self, images: dict[str, Text]) -> None:
+    def set_images(self, images: dict[str, Any]) -> None:
         self.images = images
         self.refresh_content()
 
@@ -103,11 +106,12 @@ class ChapterText(Static):
         except Exception:  # noqa: BLE001 - a missing class must not break the text
             return Style()
 
-    def build(self) -> Text:
+    def build(self) -> Group:
         """The chapter as rich text, with the cursor line on the current sentence."""
+        parts: list[Any] = []
         text = Text()
         if not self.chapter:
-            return text
+            return Group()
         title_style = self._style("chapter-title")
         current_style = self._style("sentence-current")
         read_style = self._style("word-read")
@@ -119,13 +123,19 @@ class ChapterText(Static):
         while index < len(blocks):
             block = blocks[index]
             if block.get("type") == "img":
+                if text.plain:
+                    parts.append(text)
+                    text = Text()
                 preview = self.images.get(block.get("id", ""))
                 if preview is not None:
-                    text.append_text(preview)
+                    parts.append(preview)
                 if block.get("alt"):
-                    text.append(f"[图：{block['alt']}]\n", style=Style(dim=True))
+                    parts.append(
+                        Text(f"[图：{block['alt']}]\n", style=Style(dim=True))
+                    )
                 elif preview is None:
-                    text.append("[图]\n", style=Style(dim=True))
+                    parts.append(Text("[图片加载中…]\n", style=Style(dim=True)))
+                parts.append(Text("\n"))
                 index += 1
                 continue
             if block.get("type") == "hr":
@@ -154,7 +164,9 @@ class ChapterText(Static):
                     text.append(sentence["text"], style=heading)
             text.append("\n")
             index += 1
-        return text
+        if text.plain:
+            parts.append(text)
+        return Group(*parts)
 
     def _without_repeated_title(self) -> list[dict]:
         """The chapter title is already on top — do not repeat it."""
@@ -264,7 +276,7 @@ class BaseReaderScreen(Screen):
         self._hits: list[dict] = []
         self._hit_index = -1
         self._pane_mode = "toc"
-        self.image_cache: dict[str, Text] = {}
+        self.image_cache: dict[str, Any] = {}
 
     # -- layout ----------------------------------------------------------
     def compose(self) -> ComposeResult:
@@ -361,7 +373,7 @@ class BaseReaderScreen(Screen):
             return
 
         def worker() -> None:
-            previews: dict[str, Text] = {}
+            previews: dict[str, Any] = {}
             for block in blocks:
                 src = str(block["src"])
                 key = f"{self.book_id}:{src}"
@@ -369,7 +381,7 @@ class BaseReaderScreen(Screen):
                 if preview is None:
                     try:
                         data = self.app.api.fetch_media(self.book_id, src)
-                        preview = render_terminal_image(data)
+                        preview = render_chapter_image(data)
                     except Exception:  # noqa: BLE001 - one bad image cannot break reading
                         preview = None
                     if preview is not None:
@@ -383,7 +395,7 @@ class BaseReaderScreen(Screen):
 
         self.run_worker(worker, group="chapter-images", exclusive=True, thread=True)
 
-    def _apply_chapter_images(self, chapter_id: str, previews: dict[str, Text]) -> None:
+    def _apply_chapter_images(self, chapter_id: str, previews: dict[str, Any]) -> None:
         if not self.chapter or self.chapter.get("chapter_id") != chapter_id:
             return
         try:

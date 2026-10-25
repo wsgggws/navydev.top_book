@@ -108,6 +108,15 @@ class ApiClient:
         with urlopen(request, timeout=60, context=self._ssl_context()) as response:
             return response.read()
 
+    def fetch_cover(self, book_id: str) -> bytes:
+        """Download the shelf cover for one book."""
+        request = Request(
+            f"{self.base_url.rstrip('/')}/api/v1/books/{book_id}/cover",
+            headers=self._headers(),
+        )
+        with urlopen(request, timeout=60, context=self._ssl_context()) as response:
+            return response.read()
+
     def download_audio(self, book_id: str, sentence_id: str, target: str) -> str:
         """Download one sentence tile to a local file."""
         request = Request(self.audio_url(book_id, sentence_id), headers=self._headers())

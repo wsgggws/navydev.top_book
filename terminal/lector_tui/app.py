@@ -103,6 +103,36 @@ class LectorApp(App):
         border-left: solid $panel;
     }
 
+    .book-row {
+        height: auto;
+        min-height: 10;
+        padding: 1 0;
+    }
+
+    .book-cover {
+        width: 10;
+        height: auto;
+        min-height: 10;
+        margin-right: 2;
+        background: $panel;
+    }
+
+    .book-info {
+        width: 1fr;
+        height: auto;
+        align-vertical: middle;
+    }
+
+    .book-title {
+        text-style: bold;
+        color: $foreground;
+    }
+
+    .book-meta {
+        color: $text-muted;
+        margin-top: 1;
+    }
+
     #library-list:focus > ListItem.-selected {
         background: $panel;
         border-left: solid $accent;

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 
 def test_vim_navigation_and_play_keys_are_registered():
     from lector_tui.screens.library import LibraryScreen
@@ -40,3 +42,26 @@ def test_reader_highlight_avoids_background_colours_and_narrows_the_page():
     assert "max-width: 72;" in css
     assert "background: $accent 35%" not in css
     assert "background: $accent 55%" not in css
+
+
+def test_q_quits_from_the_bookshelf(monkeypatch):
+    """The shelf's advertised quit key must actually end the application."""
+    from lector_tui.api import ApiClient
+    from lector_tui.app import LectorApp
+    from lector_tui.screens.library import LibraryScreen
+
+    monkeypatch.setattr(ApiClient, "list_books", lambda self: [])
+    app = LectorApp(
+        base_url="http://127.0.0.1:1",
+        theme="night",
+        theme_preference="night",
+    )
+
+    async def scenario() -> None:
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert isinstance(app.screen, LibraryScreen)
+            await pilot.press("q")
+            assert app.is_running is False
+
+    asyncio.run(scenario())

@@ -6,16 +6,47 @@ Uploading and deleting books are the web client's business.
 
 from __future__ import annotations
 
+from io import BytesIO
+
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical
+from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
-from textual.widgets import Footer, Input, Label, ListItem, Static
+from textual.widgets import Footer, Input, ListItem, Static
+from textual_image.widget import Image as TerminalImage
 
 from lector_tui.config import ProgressStore
 from lector_tui.widgets import VimListView
 
 from lector_tui.screens.reader import ReaderScreen
+
+
+class BookItem(ListItem):
+    """One shelf row: cover on the left, title and metadata on the right."""
+
+    def __init__(self, book: dict, percent: int) -> None:
+        super().__init__()
+        self.book = book
+        self.percent = percent
+
+    def compose(self) -> ComposeResult:
+        book = self.book
+        with Horizontal(classes="book-row"):
+            yield TerminalImage(classes="book-cover")
+            with Vertical(classes="book-info"):
+                yield Static(book["title"], classes="book-title")
+                yield Static(
+                    f"{book.get('author') or '未知作者'}\n"
+                    f"{book.get('language') or ''}  ·  已读 {self.percent}%",
+                    classes="book-meta",
+                )
+
+    def set_cover(self, data: bytes) -> None:
+        """Swap the loading box for the downloaded cover."""
+        try:
+            self.query_one(TerminalImage).image = BytesIO(data)
+        except Exception:  # noqa: BLE001 - a cover must never break the shelf
+            return
 
 
 class LibraryScreen(Screen):
@@ -35,6 +66,7 @@ class LibraryScreen(Screen):
     def __init__(self) -> None:
         super().__init__()
         self._books: list[dict] = []
+        self._cover_cache: dict[str, bytes] = {}
 
     def compose(self) -> ComposeResult:
         with Vertical():
@@ -66,19 +98,41 @@ class LibraryScreen(Screen):
             self.notify(f"无法读取书架：{exc}", title="错误", severity="error")
             return
         if not self._books:
-            listing.append(ListItem(Label("（空）")))
+            listing.append(ListItem(Static("（空）")))
             return
         # 进度是这台机器的终端自己记的，跟网页和服务器都无关。
         progress = ProgressStore.load()
+        items: list[BookItem] = []
         for book in self._books:
             percent = int(progress.percent(book["book_id"]) * 100)
-            label = Label(
-                f"▸ {book['title']}\n"
-                f"  {book.get('author') or '未知作者'}   "
-                f"{percent}%  {book.get('language') or ''}"
-            )
-            listing.append(ListItem(label))
+            item = BookItem(book, percent)
+            listing.append(item)
+            items.append(item)
         listing.index = 0
+        self.call_after_refresh(self._load_covers, items)
+
+    def _load_covers(self, items: list[BookItem]) -> None:
+        """Download covers off the UI thread and fill them in as they arrive."""
+
+        def worker() -> None:
+            for item in items:
+                book = item.book
+                book_id = book["book_id"]
+                if not book.get("cover_url"):
+                    continue
+                data = self._cover_cache.get(book_id)
+                if data is None:
+                    try:
+                        data = self.app.api.fetch_cover(book_id)
+                    except Exception:  # noqa: BLE001 - fall back to a blank cover
+                        continue
+                    self._cover_cache[book_id] = data
+                try:
+                    self.app.call_from_thread(item.set_cover, data)
+                except Exception:  # noqa: BLE001 - the shelf may have been closed
+                    return
+
+        self.run_worker(worker, group="book-covers", exclusive=True, thread=True)
 
     # -- actions ---------------------------------------------------------
     def action_open(self) -> None:
@@ -123,6 +177,10 @@ class LibraryScreen(Screen):
         url_input.value = self.app.config.url
         token_input.value = self.app.config.token
         url_input.focus()
+
+    def action_quit(self) -> None:
+        """Leave the application from the shelf."""
+        self.app.exit()
 
     # -- events ----------------------------------------------------------
     def on_list_view_selected(self, event: ListView.Selected) -> None:
