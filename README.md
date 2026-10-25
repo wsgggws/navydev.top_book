@@ -47,8 +47,8 @@ Homebrew 安装自带 Python 运行时的 **PyInstaller 独立二进制**，支�
 不依赖系统 Python。已有安装可执行 `brew update && brew upgrade lector`。
 
 默认连接线上 `/ebook`，公开阅读无需 token。支持 `hjkl`、空格播放/暂停、`q` 返回/退出。
-自动主题读取终端配色；书架封面与正文图片逐张异步显示。Sixel 按行绘制，支持局部重绘
-和滚动裁剪；不支持原生图片的终端使用彩色半块字符。
+自动主题读取终端配色；书架封面与正文图片逐张异步显示。Sixel 在同一帧内整图绘制，
+支持局部刷新和滚动裁剪；不支持原生图片的终端使用彩色半块字符。
 
 图片默认缓存 512 MiB，按服务器隔离；损坏缓存重新获取。macOS 缓存在
 `~/Library/Caches/lector/images/`，Linux 在 `~/.cache/lector/images/`，

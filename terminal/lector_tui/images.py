@@ -15,6 +15,10 @@ from PIL import Image, ImageDraw
 from lector_tui.image_data import decode_image
 from rich.style import Style
 from rich.text import Text
+from lector_tui.terminal_graphics import configure_graphics
+
+configure_graphics()
+
 from textual_image.renderable import (
     HalfcellImage,
     Image as AutoImage,

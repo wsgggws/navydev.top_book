@@ -1,31 +1,36 @@
-"""Images that survive Textual's partial row repaints.
+"""Native images painted as whole bitmaps after Textual's text composition.
 
-Sixel pixels are not terminal characters. Each strip must carry its own pixels:
-putting an entire bitmap on the last strip leaves holes when other rows repaint.
-The small adapter uses textual-image 0.14's scaling and Sixel encoder; tests lock
-its crop/strip contract because the implementation hook is private upstream.
+Widgets reserve cells; ImageApp appends one bitmap per affected image to the
+same display transaction. Neither dirty rows nor scrolling split the bitmap.
 """
 
 from __future__ import annotations
 
-from PIL import Image as PILImage
+from collections import OrderedDict
+
+from PIL import Image as PILImage, ImageDraw
 from rich.control import Control
-from rich.segment import ControlType, Segment
-from rich.style import Style
+from rich.segment import Segment
+from textual._compositor import ChopsUpdate, CompositorUpdate, LayoutUpdate
 from textual.app import ComposeResult
-from textual.dom import NoScreen
 from textual.geometry import Region, Size
 from textual.strip import Strip
 from textual.widgets import Static
+from lector_tui.terminal_graphics import configure_graphics
+
+# Seed the library's capability cache before its import-time auto selection.
+configure_graphics()
+
 from textual_image._geometry import ImageSize
 from textual_image._pixeldata import PixelData
 from textual_image._terminal import CellSize, get_cell_size
 from textual_image.widget import HalfcellImage, Image, SixelImage, UnicodeImage
+from textual_image.widget._base import Image as BaseImage
 from textual_image.widget.sixel import _ImageSixelImpl
 
 
-class _RowSixels(_ImageSixelImpl):
-    """Cache scaled pixels and encode independent terminal rows on demand."""
+class _WholeSixels(_ImageSixelImpl):
+    """Reserve text cells and cache complete, viewport-cropped bitmaps."""
 
     def _scale_image(self, image_data: PixelData, terminal_sizes: CellSize) -> PixelData:
         width, height = self.parent._get_styled_size()
@@ -50,56 +55,125 @@ class _RowSixels(_ImageSixelImpl):
         return scaled
 
     def render_lines(self, crop: Region) -> list[Strip]:
-        try:
-            if not self.image or not self.screen.is_active or not crop:
-                return []
-        except NoScreen:
-            return []
+        clear = Strip([Segment(" " * crop.width, self._get_clear_style())], crop.width)
+        return [clear] * crop.height
+
+    def bitmap(self, crop: Region, occlusions: tuple[Region, ...]) -> str:
         cells = get_cell_size()
         background = self._get_background_rgba()
-        key = (id(self.image), self.content_size, cells, background)
+        key = (id(self.image), self.content_size, cells, background, self._sixel_options)
         if getattr(self, "_pixel_key", None) != key:
-            try:
-                self._pixels = self._scale_image(PixelData(self.image), cells)
-            except (OSError, ValueError) as exc:
-                self.post_message(self.Failed(exc))
-                return []
+            self._pixels = self._scale_image(PixelData(self.image), cells)
             self._pixel_key = key
-            self._rows: dict[tuple[int, int, int], str] = {}
-        lines: list[Strip] = []
-        clear = Segment(" " * crop.width, style=self._get_clear_style())
-        for y in range(crop.y, crop.bottom):
-            row_key = (crop.x, y, crop.width)
-            data = self._rows.get(row_key)
-            if data is None:
-                pixels = self._crop_image(self._pixels, Region(crop.x, y, crop.width, 1), cells)
-                data = self._image_to_sixels(pixels.pil_image, self._sixel_options, background)
-                if len(self._rows) >= 256:
-                    self._rows.pop(next(iter(self._rows)))
-                self._rows[row_key] = data
-            # Use the requested row, not the visible image's top-left: partial
-            # repaint and top-clipped scroll regions have different origins.
-            x_screen = self.region.x + crop.x
-            y_screen = self.region.y + y
-            lines.append(
-                Strip(
-                    [
-                        clear,
-                        Control.move_to(x_screen, y_screen).segment,
-                        Segment(data, style=Style(), control=((ControlType.CURSOR_FORWARD, 0),)),
-                        Control.move_to(x_screen + crop.width, y_screen).segment,
-                    ],
-                    cell_length=crop.width,
+            self._bitmaps: OrderedDict[tuple, str] = OrderedDict()
+            self._bitmap_bytes = 0
+        cache_key = (crop, occlusions)
+        if cache_key in self._bitmaps:
+            self._bitmaps.move_to_end(cache_key)
+            return self._bitmaps[cache_key]
+        pixels = self._crop_image(self._pixels, crop, cells).pil_image
+        if occlusions:
+            # A notification/menu may cover only part of an image. Transparent
+            # pixels preserve that text while the image remains a single bitmap.
+            pixels = pixels.convert("RGBA")
+            draw = ImageDraw.Draw(pixels)
+            for area in occlusions:
+                draw.rectangle(
+                    (area.x * cells.width, area.y * cells.height,
+                     area.right * cells.width - 1, area.bottom * cells.height - 1),
+                    fill=(0, 0, 0, 0),
                 )
-            )
-        return lines
+        data = self._image_to_sixels(pixels, self._sixel_options, background)
+        while self._bitmaps and (len(self._bitmaps) >= 8 or self._bitmap_bytes + len(data) > 8 * 1024 * 1024):
+            _, evicted = self._bitmaps.popitem(last=False)
+            self._bitmap_bytes -= len(evicted)
+        if len(data) <= 8 * 1024 * 1024:
+            self._bitmaps[cache_key] = data
+            self._bitmap_bytes += len(data)
+        return data
 
 
-class RowSixelImage(SixelImage, Renderable=SixelImage._Renderable):
-    """A native Sixel image with independent, correctly positioned row strips."""
+class WholeSixelImage(SixelImage, Renderable=SixelImage._Renderable):
+    """Keep a stable child when an asynchronous download replaces an image."""
+
+    @BaseImage.image.setter
+    def image(self, value) -> None:
+        self._error_widget = None
+        self._is_failed = False
+        BaseImage.image.fset(self, value)
+        if self._error_widget is not None:
+            self.refresh(recompose=True)
+            return
+        children = self.query(_WholeSixels)
+        for child in children:
+            child.image = self.image
+            child.refresh()
+        if self.is_mounted and not children:
+            self.refresh(recompose=True)
 
     def compose(self) -> ComposeResult:
-        yield _RowSixels(self.image, self._sixel_options)
+        if self._error_widget is not None:
+            yield self._error_widget
+        else:
+            yield _WholeSixels(self.image, self._sixel_options)
+
+
+def _updated_regions(update: CompositorUpdate) -> list[Region]:
+    if isinstance(update, LayoutUpdate):
+        return [update.region]
+    if isinstance(update, ChopsUpdate):
+        # ChopsUpdate may write from a strip's start, before span.x1.
+        return [
+            Region(x, y, min(end, x2) - x, 1)
+            for y, x1, x2 in update.spans
+            for end, (x, strip) in zip(update.chop_ends[y], update.chops[y].items())
+            if strip is not None and x < x2 and end > x1
+        ]
+    return []
+
+
+class _ImageFrame(CompositorUpdate):
+    def __init__(self, screen, update: CompositorUpdate) -> None:
+        self.screen, self.update = screen, update
+
+    def render_segments(self, console) -> str:
+        text = self.update.render_segments(console)
+        dirty = _updated_regions(self.update)
+        graphics = []
+        covered: list[Region] = []
+        # This is the compositor's own front-to-back paint order and clipping.
+        for widget, (region, clip) in self.screen._compositor.visible_widgets.items():
+            visible = region.intersection(clip).intersection(self.screen.size.region)
+            if isinstance(widget, _WholeSixels) and widget.image and visible:
+                masks = tuple(sorted({area.intersection(visible) for area in covered if area.overlaps(visible)}))
+                if visible not in masks:
+                    state = (visible, masks, id(widget.image), widget.content_size, widget._get_background_rgba())
+                    if getattr(widget, "_placement", None) != state or any(area.overlaps(visible) for area in dirty):
+                        crop = visible.translate(-region.offset)
+                        relative_masks = tuple(area.translate(-visible.offset) for area in masks)
+                        try:
+                            data = widget.bitmap(crop, relative_masks)
+                        except (OSError, ValueError) as exc:
+                            widget.post_message(widget.Failed(exc))
+                        else:
+                            graphics.append(Control.move_to(visible.x, visible.y).segment.text + data)
+                            widget._placement = state
+            if visible:
+                covered.append(visible)
+        if graphics:
+            # Textual moves the cursor after this frame. Synchronize the clear
+            # and complete image even before Textual's mode negotiation finishes.
+            frame = text + "".join(graphics)
+            if not self.screen.app._sync_available:
+                frame = "\x1b[?2026h" + frame + "\x1b[?2026l"
+            return frame
+        return text
+
+
+def image_frame(screen, update: CompositorUpdate) -> CompositorUpdate:
+    if any(isinstance(widget, _WholeSixels) for widget in screen._compositor.visible_widgets):
+        return _ImageFrame(screen, update)
+    return update
 
 
 def image_error(exc: Exception) -> Static:
@@ -109,7 +183,7 @@ def image_error(exc: Exception) -> Static:
 
 # Unicode fallback discards colour; half cells retain the book's colours.
 if Image is SixelImage:
-    _ImageRenderer = RowSixelImage
+    _ImageRenderer = WholeSixelImage
 elif Image._Renderable is UnicodeImage._Renderable:
     _ImageRenderer = HalfcellImage
 else:

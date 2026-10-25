@@ -9,12 +9,12 @@ from __future__ import annotations
 import argparse
 from importlib.metadata import PackageNotFoundError, version
 
-from textual.app import App
 from textual.theme import Theme
 
 from lector_tui.api import ApiClient
 from lector_tui.audio import AudioPlayer
 from lector_tui.config import ClientConfig
+from lector_tui.image_app import ImageApp
 from lector_tui.theme import _is_light, query_terminal_colors, resolve_theme
 
 #: The three themes of the interface specification.
@@ -83,7 +83,7 @@ THEME_CYCLE = (
 )
 
 
-class LectorApp(App):
+class LectorApp(ImageApp):
     """The terminal application."""
 
     CSS = """

@@ -86,39 +86,6 @@ def test_chapter_image_widget_survives_highlight_updates():
     asyncio.run(scenario())
 
 
-def test_sixel_rows_repaint_independently_at_the_correct_crop_origin():
-    """A dirty row must carry pixels even when the last image row is untouched."""
-    from rich.control import Control
-    from textual.app import App, ComposeResult
-    from textual.containers import VerticalScroll
-    from textual.geometry import Region
-    from lector_tui.image_widget import RowSixelImage, _RowSixels
-
-    class Host(App):
-        CSS = "RowSixelImage { width: 20; height: 10; }"
-
-        def compose(self) -> ComposeResult:
-            yield VerticalScroll(RowSixelImage(Image.new("RGB", (200, 200), "red")))
-
-    async def scenario():
-        app = Host()
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            impl = app.query_one(_RowSixels)
-            strips = impl.render_lines(Region(0, 0, 20, 10))
-            assert len(strips) == 10
-            for y, strip in enumerate(strips):
-                assert any("\x1bP" in segment.text for segment in strip)
-                origin = Control.move_to(impl.region.x, impl.region.y + y).segment.text
-                assert origin in "".join(segment.text for segment in strip)
-            partial = impl.render_lines(Region(3, 4, 7, 1))
-            origin = Control.move_to(impl.region.x + 3, impl.region.y + 4).segment.text
-            assert origin in "".join(segment.text for segment in partial[0])
-            assert any("\x1bP" in segment.text for segment in partial[0])
-
-    asyncio.run(scenario())
-
-
 def test_loading_images_preserves_paragraphs_and_initial_text():
     from textual.app import App, ComposeResult
     from textual.containers import VerticalScroll
