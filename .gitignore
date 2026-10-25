@@ -219,6 +219,10 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
+# PyInstaller 构建产物与烘焙进去的版本号
+terminal/lector_tui/_build_info.py
+terminal/dist/
+
 # Lector 运行时数据
 data/
 .DS_Store

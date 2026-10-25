@@ -1,0 +1,78 @@
+name: Terminal Release
+
+on:
+  push:
+    tags:
+      - "terminal-v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "要发布的标签，例如 terminal-v1.1.1"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            arch: arm64
+          - os: macos-13
+            arch: x86_64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Build standalone binary
+        run: bash terminal/scripts/build-binary.sh terminal/dist
+
+      - name: Package
+        run: |
+          cd terminal/dist
+          tar -czf "lector-macos-${{ matrix.arch }}.tar.gz" lector
+          shasum -a 256 "lector-macos-${{ matrix.arch }}.tar.gz" \
+            > "lector-macos-${{ matrix.arch }}.tar.gz.sha256"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lector-macos-${{ matrix.arch }}
+          path: |
+            terminal/dist/lector-macos-${{ matrix.arch }}.tar.gz
+            terminal/dist/lector-macos-${{ matrix.arch }}.tar.gz.sha256
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create or update the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            gh release upload "${TAG}" artifacts/*.tar.gz --clobber
+          else
+            gh release create "${TAG}" artifacts/*.tar.gz \
+              --target "${GITHUB_SHA}" \
+              --title "Lector Terminal ${TAG}" \
+              --notes "Standalone macOS binary: no Python installation required."
+          fi

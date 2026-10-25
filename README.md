@@ -52,7 +52,8 @@ make terminal   # 启动终端端
 make book books/my.epub
 ```
 
-通过 Homebrew 安装终端：
+通过 Homebrew 安装终端（PyInstaller 独立二进制，自带 Python 运行时，
+机器上不需要 Python）：
 
 ```bash
 brew tap wsgggws/ebook https://github.com/wsgggws/navydev.top_ebook

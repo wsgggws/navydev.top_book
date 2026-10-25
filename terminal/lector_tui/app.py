@@ -274,6 +274,13 @@ class LectorApp(App):
 
 
 def _version() -> str:
+    """The client version, also baked into the standalone binary."""
+    try:
+        from lector_tui._build_info import VERSION
+
+        return VERSION
+    except ImportError:
+        pass
     try:
         return version("lector-tui")
     except PackageNotFoundError:

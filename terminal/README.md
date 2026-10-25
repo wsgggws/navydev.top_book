@@ -16,6 +16,9 @@ brew tap wsgggws/ebook https://github.com/wsgggws/navydev.top_ebook
 brew install wsgggws/ebook/lector
 ```
 
+装的是 **PyInstaller 独立二进制**（macOS arm64 / x86_64 自带 Python 运行时），
+机器上不需要任何 Python，也不需要 pip / uv。
+
 运行：
 
 ```bash
@@ -96,3 +99,17 @@ uv sync
 uv run lector
 uv run pytest -q
 ```
+
+自己构建独立二进制（输出到 `terminal/dist/lector`）：
+
+```bash
+cd terminal
+bash scripts/build-binary.sh
+```
+
+## 发布
+
+推送 `terminal-v*` 标签会触发 `.github/workflows/terminal-release.yml`：
+在 macOS arm64 与 x86_64 runner 上各构建一次，压缩成
+`lector-macos-<arch>.tar.gz` 并挂到 GitHub Release，Homebrew 公式直接下载
+这些二进制。
