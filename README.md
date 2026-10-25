@@ -1,28 +1,44 @@
 # navy's ebook
 
-**有声电子书**：阅读 EPUB、逐句听书、文字随声音高亮。
-线上入口：<https://navydev.top/ebook>。仓库名为 `navydev.top_ebook`。
+**有声电子书：戴上耳朵读，声音读到哪里，文字就亮到哪里。**
 
-## 功能与结构
+访问 <https://navydev.top/ebook>，无需登录。支持 PC、移动浏览器和独立终端客户端 `lector`。
+仓库名为 `navydev.top_ebook`。
 
-- 书架：书名模糊搜索、每页 12 本、最近阅读优先、其余按打开次数排序。
-- 阅读：目录、全书搜索、羊皮色默认主题、PC 与手机布局、键盘与触屏操作。
-- 听书：句级 TTS、词级高亮、音频预取、0.75–2.0× 倍速；中英文默认男声。
-- 进度：书架显示全书百分比，播放条显示本章 `mm:ss / mm:ss`，有小时用 `hh:mm:ss`。
-- 独立客户端：网页用 localStorage；终端用本机 JSON，阅读位置与选项互不覆盖。
-  倍速、男女声与音色按书保存；新书默认 1.0×、男声，切回或重开恢复该书设置。
+## 阅读与听书
 
-| 目录 | 用途 |
-| --- | --- |
-| `lector/` | FastAPI、SQLite、标准库 EPUB 解析、Edge TTS 与音频缓存 |
-| `web/` | 原生 JavaScript ES Modules + CSS，无前端构建步骤 |
-| `terminal/` | 独立 Textual 客户端；系统音频播放器；原生终端图片与磁盘缓存 |
-| `books/` | 随仓库发布的 EPUB |
-| `docs/`、`deploy/` | API/UI 契约与部署说明 |
+- 书架支持书名模糊搜索，每页 12 本；最近阅读优先，其余按打开次数排序。
+- 阅读支持章节目录、全书搜索、字号调整和主题切换，默认羊皮色、20px 正文。
+- 听书支持中英文、男女声、0.75–2.0× 倍速和音频预取；当前朗读文字高亮，离开可视区时自动滚动。
+- 中文书默认中文男声，英文书默认美式男声；新书默认 1.0×，声音选项限定为该书语言。
+- 每本书分别保存位置、倍速、性别和音色，切回或重开后恢复。全书百分比显示在书架，章节时间显示在播放条。
 
-## 本地运行
+网页使用浏览器 `localStorage`，终端使用本机 JSON。两端共享书籍内容，**进度与设置各自独立，不跨浏览器或设备同步**。
+章节时间显示为 `mm:ss / mm:ss`，有小时时两侧均用 `hh:mm:ss`；尚未合成的音频时长为估算值，生成后校准。
 
-开发统一使用 **uv + Python 3.12**。服务端与终端各自有 `pyproject.toml` 和 `uv.lock`。
+## 使用终端 lector
+
+```sh
+brew tap wsgggws/ebook https://github.com/wsgggws/navydev.top_ebook
+brew install wsgggws/ebook/lector
+lector
+```
+
+Homebrew 提供 macOS arm64 / x86_64 的 **PyInstaller 独立二进制**，无需安装 Python、pip 或 uv。
+升级：`brew update && brew upgrade wsgggws/ebook/lector`。默认连接线上服务，无需 token。
+
+- `j/k` 移动或滚动，书架按 `l` 打开；阅读时 `h/l` 切换句子。
+- 空格播放/暂停，听书时 `+/-` 调速、`0` 恢复 1.0×、`v` 切换男女声。
+- `f` 全屏正文，`q` 返回、书架退出，`Ctrl+l` 重绘页面与图片。
+
+自动主题读取终端配色；正文靠左，最大 96 列。书架封面与插图异步加载并缓存到磁盘，默认上限 512 MiB。
+tmux 内外共用缓存；WezTerm + tmux 使用稳定的彩色半块图片，直连 WezTerm 保留高清位图。其它 tmux 连接校验原生图片能力后选择渲染方式。
+macOS 缓存位于 `~/Library/Caches/lector/images/`，Linux 位于 `~/.cache/lector/images/`。
+完整键位、缓存配置、播放器要求与 tmux 说明见 [terminal/README.md](terminal/README.md)。
+
+## 本地开发
+
+使用 **uv + Python 3.12**。服务端与 `terminal/` 各有独立的依赖和锁文件。
 
 ```sh
 uv sync
@@ -32,35 +48,17 @@ uv run lector-server
 
 ```sh
 make dev        # 热重载服务端
-make terminal   # 启动终端，默认连接线上
-make test       # 服务端与终端测试
+make terminal   # 启动独立终端项目，默认连接线上
+make test       # JavaScript、服务端与终端测试
 ```
 
-## 安装终端
+技术栈：`lector/` 使用 FastAPI、SQLite、标准库 EPUB 解析和 Edge TTS；`web/` 使用原生
+JavaScript ES Modules 与 CSS，无前端构建步骤；`terminal/` 使用 Textual、textual-image、Pillow 和系统音频播放器。
 
-```sh
-brew tap wsgggws/ebook https://github.com/wsgggws/navydev.top_ebook
-brew install wsgggws/ebook/lector
-lector
-```
+## 添加书籍
 
-Homebrew 安装自带 Python 运行时的 **PyInstaller 独立二进制**，支持 macOS arm64/x86_64，
-不依赖系统 Python。已有安装可执行 `brew update && brew upgrade lector`。
-
-默认连接线上 `/ebook`，公开阅读无需 token。支持 `hjkl`、空格播放/暂停、`q` 返回/退出。
-自动主题读取终端配色；书架封面与正文图片逐张异步显示。Sixel 在同一帧内整图绘制，
-支持局部刷新和滚动裁剪；tmux 校验实际图片能力，无法原生绘制时使用彩色半块字符。
-切回窗口重绘缓存图片，也可按 `Ctrl+l` 手动重绘。
-
-图片默认缓存 512 MiB，按服务器隔离；损坏缓存重新获取。macOS 缓存在
-`~/Library/Caches/lector/images/`，Linux 在 `~/.cache/lector/images/`，
-可用 `LECTOR_CACHE_DIR` 更改。完整键位、配置与发版见 [terminal/README.md](terminal/README.md)。
-
-## 发布书籍
-
-书籍由维护者放进 `books/`，网页和终端均不提供上传、删除入口。
-启动时按内容哈希去重导入。文件名支持 `书名(作者).epub` 和 `书名（作者）.epub`，
-显示书名、作者以文件名为准。
+维护者将 EPUB 放入 `books/`，命名为 `书名(作者).epub` 或 `书名（作者）.epub`。
+书架以文件名显示书名与作者；网页和终端均无上传、删除入口。
 
 ```sh
 cp ~/Downloads/new-book.epub books/
@@ -69,51 +67,35 @@ git commit -m "book: add new-book"
 git push origin main
 ```
 
-也可以从 Markdown 生成 EPUB 并导入本地运行的服务：
+部署后服务启动时自动导入，按内容哈希去重。本地可将已有 EPUB 导入运行中的服务，或从 Markdown 构建：
 
 ```sh
-make book books/my.epub
-make book BOOK="books/路径 带空格.epub"
+make book BOOK="books/书名（作者）.epub"
 ```
 
-目标 EPUB 已存在且没有 Markdown 源时只导入成品。源目录格式与支持的 Markdown
-子集见 [PROMPT.md](PROMPT.md) 和 `lector/build.py`。
+已有 EPUB 且无 Markdown 源时直接导入。构建规则见 [PROMPT.md](PROMPT.md)，默认目标服务为 `http://127.0.0.1:8000`。
 
-## 配置与安全
+## 部署与安全
 
-| 环境变量 | 默认 | 用途 |
-| --- | --- | --- |
-| `LECTOR_DATA_DIR` | `./data` | SQLite、导入书籍、音频缓存 |
-| `LECTOR_BOOKS_DIR` | `./books` | 启动导入目录 |
-| `LECTOR_HOST` / `LECTOR_PORT` | `127.0.0.1` / `8000` | 监听地址与端口 |
-| `LECTOR_BASE_PATH` | 空 | 生产为 `/ebook` |
-| `LECTOR_TOKEN` | 空 | 公网管理令牌；不配置则禁用管理写接口 |
-| `LECTOR_TTS_ENGINE` | `edge` | `edge` / `espeak` / `auto` |
-| `LECTOR_MAX_UPLOAD` | `52428800` | 上传字节上限 |
-| `LECTOR_AUDIO_CACHE_BYTES` | `10737418240` | 服务端音频缓存上限，默认 10 GiB，按最近使用淘汰 |
+GitHub Actions 测试、构建镜像后，通过 **SSH + Docker Compose** 发布。容器绑定
+`127.0.0.1:8010`，由同级 `nginx-config` 仓库代理 `/ebook`；数据卷
+`navydev-top-ebook-data` 保存书籍、数据库与音频。健康检查失败会回滚。
 
-阅读公开。管理接口使用 Bearer token：`secret` 或 `secret:admin` 具有管理权限，
-`secret:reader` 只读；客户端只发送 `secret`。本地管理豁免仅适用于直接 loopback
-开发连接；伪造 Host 或转发头不能取得管理权限。
+阅读公开。公网管理接口需要管理员 token，未配置 `LECTOR_TOKEN` 时禁用；直接 loopback 开发连接有受限管理豁免。
+浏览器写请求校验同源，EPUB、图片和 TTS 有资源限制。终端标识头与 User-Agent/Referer 过滤不构成身份认证。
+服务端音频缓存默认 10 GiB，可用 `LECTOR_AUDIO_CACHE_BYTES` 调整。
 
-浏览器写请求校验完整同源，媒体读取和 TTS 参数/并发有上限；返回 CSP 等安全头。
-终端的 `X-Lector-Client: terminal` 和 User-Agent/Referer 检查是客户端识别及基础过滤，
-不构成身份认证。终端图片下载与解码也有大小、尺寸、像素限制。
+部署配置、Secrets、备份和运维见 [docs/DEPLOY.md](docs/DEPLOY.md)；
+接口与安全规则见 [docs/API.md](docs/API.md)，交互规则见 [docs/UI.md](docs/UI.md)，
+开发约束见 [AGENTS.md](AGENTS.md)。
 
-## 部署与验证
-
-GitHub Actions 在 main 提交后测试、构建镜像，再通过 **SSH + Docker Compose** 发布。
-容器绑定 `127.0.0.1:8010`，中央 Nginx 代理 `/ebook`；数据卷
-`navydev-top-ebook-data` 持久保存书籍和音频。健康检查失败会回滚。
-设置 GitHub Secrets 和手动运维见 [docs/DEPLOY.md](docs/DEPLOY.md)。
+## 验证
 
 ```sh
 uv run pytest -q
-(cd terminal && uv run pytest -q)
+uv run --directory terminal pytest -q
 node --test web/js/util.test.mjs
+git diff --check
 ```
 
-浏览器回归覆盖窄屏布局、倍速菜单、抽屉与焦点，准备方法见
-[web/tests/README.md](web/tests/README.md)。依赖导出文件 `requirements.txt` 由 uv 生成。
-开发约束见 [AGENTS.md](AGENTS.md)，接口与交互见 [docs/API.md](docs/API.md) 和
-[docs/UI.md](docs/UI.md)。
+网页交互测试的准备与执行见 [web/tests/README.md](web/tests/README.md)。

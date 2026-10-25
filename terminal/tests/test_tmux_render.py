@@ -4,6 +4,7 @@ from io import BytesIO
 import json
 import os
 import pty
+import re
 import select
 import shlex
 import shutil
@@ -21,18 +22,25 @@ import pytest
 
 @pytest.mark.skipif(not shutil.which("tmux"), reason="tmux executable is not installed")
 @pytest.mark.parametrize("advertised", [False, True])
-def test_real_tmux_preserves_cached_images_with_native_support_or_fallback(tmp_path, advertised):
+@pytest.mark.parametrize("outer", ["WezTerm", "foot"])
+def test_real_tmux_preserves_cached_images_with_native_support_or_fallback(tmp_path, advertised, outer):
     from lector_tui.cache import ImageCache
 
     cache_root = tmp_path / "cache"
     data = BytesIO()
-    Image.new("RGB", (200, 160), "red").save(data, format="PNG")
+    picture = Image.new("RGB", (200, 160))
+    picture.putdata([(x, y, (x + y) % 256) for y in range(160) for x in range(200)])
+    picture.save(data, format="PNG")
     assert ImageCache(cache_root / "images", namespace="test").put("book", "cover", data.getvalue())
     socket = "lector-test-" + uuid.uuid4().hex[:10]
     master, slave = pty.openpty()
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 30, 100, 1000, 600))
-    env = dict(os.environ, TERM="xterm-256color", TERM_PROGRAM="WezTerm", WEZTERM_PANE="test",
+    env = dict(os.environ, TERM="xterm-256color", TERM_PROGRAM=outer,
                LECTOR_CACHE_DIR=str(cache_root))
+    env.pop("WEZTERM_PANE", None)
+    if outer == "WezTerm":
+        # tmux may replace TERM_PROGRAM; WezTerm's pane identity survives.
+        env.update(TERM_PROGRAM="tmux", WEZTERM_PANE="test")
     env.pop("TMUX", None)
     marker = tmp_path / "rendered.json"
     script = tmp_path / "render.py"
@@ -55,13 +63,14 @@ def test_real_tmux_preserves_cached_images_with_native_support_or_fallback(tmp_p
                 built = subprocess.run(["tmux", "display-message", "-p", "#{sixel_support}"],
                                        capture_output=True, text=True).stdout.strip()
                 Path(sys.argv[1]).write_text(json.dumps({"sixel": probe_terminal().sixel, "built": built}))
+                self.set_timer(.2, lambda: setattr(self.query_one(TerminalImage), "image", BytesIO(data)))
                 self.set_timer(1.0, self.exit)
         Demo().run()
     '''))
     shell = shlex.join([sys.executable, str(script), str(marker)])
     process = subprocess.Popen(
-        ["tmux", "-L", socket, "-f", "/dev/null", "new-session", "-s", "repro", shell],
-        stdin=slave, stdout=slave, stderr=slave, env=env,
+        ["tmux", "-vv", "-L", socket, "-f", "/dev/null", "new-session", "-s", "repro", shell],
+        stdin=slave, stdout=slave, stderr=slave, env=env, cwd=tmp_path,
     )
     os.close(slave)
     output = b""
@@ -89,10 +98,25 @@ def test_real_tmux_preserves_cached_images_with_native_support_or_fallback(tmp_p
         process.wait(timeout=2)
         assert marker.exists(), repr(output[-3000:])
         report = json.loads(marker.read_text())
-        expected_native = advertised and report["built"] == "1"
+        expected_native = advertised and report["built"] == "1" and outer != "WezTerm"
         assert report["sixel"] == expected_native
         if expected_native:
             assert b'"1;1;' in output, "tmux must pass native image pixels to the outer terminal"
+            assert len(set(re.findall(rb"#[0-9]+;2;[0-9;]+", output))) > 16
+            # tmux retains native images independently of Textual's blank text
+            # cells. Replacing a bitmap must release the old layer, even when
+            # the compositor elides the unchanged spaces beneath it.
+            log = next(tmp_path.glob("tmux-server-*.log")).read_text(errors="replace")
+            live = peak = stored = 0
+            for event in re.findall(r"\bimage_(store|free):", log):
+                if event == "store":
+                    live += 1
+                    stored += 1
+                    peak = max(peak, live)
+                else:
+                    live -= 1
+            assert stored >= 2, "exercise asynchronous bitmap replacement"
+            assert peak == 1, "repainting one widget must not stack old tmux image layers"
         else:
             assert "▀".encode() in output, "tmux must display color halfcells instead of blank images"
     finally:

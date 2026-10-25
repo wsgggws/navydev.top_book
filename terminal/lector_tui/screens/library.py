@@ -79,7 +79,7 @@ class LibraryScreen(Screen):
 
     def compose(self) -> ComposeResult:
         with Vertical():
-            yield Static("  有声电子书  书架", id="shelf-title")
+            yield Static("  navy's ebook (有声朗读，逐词高亮，本机续读)  书架", id="shelf-title", markup=False)
             yield Static("", id="shelf-server")
             yield VimListView(id="library-list")
             yield Input(placeholder="服务器地址，例如 https://navydev.top/ebook", id="connect-url")

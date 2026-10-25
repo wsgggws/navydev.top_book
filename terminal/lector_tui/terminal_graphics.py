@@ -79,6 +79,8 @@ def configure_graphics() -> None:
     that a multiplexer can render native graphics. An unknown terminal
     gets a bounded Sixel DA query, never a Kitty APC query. Non-TTY commands do
     no terminal I/O. Ioctl dimensions can be zero in a newly opened PTY.
+    WezTerm behind tmux uses half cells: native Sixel layers can remain blank
+    until focus changes, or survive a screen change despite successful DA.
     """
     from textual_image import _terminal
 
@@ -99,11 +101,12 @@ def configure_graphics() -> None:
         except (OSError, ValueError):
             pass
         multiplexed = bool(os.environ.get("TMUX")) or terminal.startswith(("tmux", "screen"))
-        kitty = not multiplexed and (terminal == "xterm-kitty" or bool(os.environ.get("KITTY_WINDOW_ID")))
-        sixel = not multiplexed and not kitty and (
+        wezterm = (
             os.environ.get("TERM_PROGRAM", "").lower() == "wezterm"
             or bool(os.environ.get("WEZTERM_PANE"))
         )
+        kitty = not multiplexed and (terminal == "xterm-kitty" or bool(os.environ.get("KITTY_WINDOW_ID")))
+        sixel = not multiplexed and not kitty and wezterm
         if not kitty and not sixel:
             try:
                 sixel, queried_width, queried_height = _query_sixel(not (width and height))
@@ -113,6 +116,10 @@ def configure_graphics() -> None:
                 height = height or queried_height
             except (ImportError, OSError, ValueError):
                 pass
+        if multiplexed and wezterm:
+            # A positive capability response cannot establish correct native
+            # redraws. Text cells participate in tmux's normal diff/scroll path.
+            sixel = False
     if not (width and height):
         try:
             width = int(os.environ.get("TEXTUAL_CELL_WIDTH", "10"))

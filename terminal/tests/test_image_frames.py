@@ -1,6 +1,7 @@
 """Exercise native graphics at the actual Textual display boundary."""
 
 import asyncio
+import re
 
 from PIL import Image
 import pytest
@@ -152,6 +153,12 @@ def test_overlay_masks_one_bitmap_without_painting_over_its_text(frames, monkeyp
             assert alpha.getextrema() == (0, 255)
             assert any("MENU" in frame for frame in frames)
             assert all(frame.count("\x1bP") == 1 for frame in graphic_frames(frames))
+            mask = overlay.region
+            for frame in graphic_frames(frames):
+                erases = re.findall(r"\x1b\[(\d+);(\d+)H(?:\x1b\[[\d;:]*m)*\x1b\[(\d+)X", frame)
+                assert erases, "native layers must be cleared before the replacement bitmap"
+                for row, column, count in erases:
+                    assert not Region(int(column) - 1, int(row) - 1, int(count), 1).overlaps(mask)
             frames.clear()
             overlay.display = False
             await pilot.pause()

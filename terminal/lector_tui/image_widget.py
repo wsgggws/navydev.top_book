@@ -132,6 +132,26 @@ def _updated_regions(update: CompositorUpdate) -> list[Region]:
     return []
 
 
+def _erase_bitmap(widget, visible: Region, masks: tuple[Region, ...], console) -> str:
+    """Release retained native layers even if Textual elides unchanged spaces.
+
+    tmux stores Sixel layers separately from the text grid. Another bitmap at
+    the same position adds a layer rather than replacing it. Explicit ECH runs
+    retire those layers; skip foreground overlays so their text stays intact.
+    """
+    erase = []
+    style = widget._get_clear_style()
+    for y in range(visible.y, visible.bottom):
+        x = visible.x
+        blocked = sorted((area.x, area.right) for area in masks if area.y <= y < area.bottom)
+        for left, right in [*blocked, (visible.right, visible.right)]:
+            if left > x:
+                erase.append(Control.move_to(x, y).segment.text)
+                erase.append(style.render(f"\x1b[{left - x}X", color_system=console._color_system))
+            x = max(x, right)
+    return "".join(erase)
+
+
 class _ImageFrame(CompositorUpdate):
     def __init__(self, screen, update: CompositorUpdate) -> None:
         self.screen, self.update = screen, update
@@ -156,7 +176,10 @@ class _ImageFrame(CompositorUpdate):
                         except (OSError, ValueError) as exc:
                             widget.post_message(widget.Failed(exc))
                         else:
-                            graphics.append(Control.move_to(visible.x, visible.y).segment.text + data)
+                            graphics.append(
+                                _erase_bitmap(widget, visible, masks, console)
+                                + Control.move_to(visible.x, visible.y).segment.text + data
+                            )
                             widget._placement = state
             if visible:
                 covered.append(visible)
