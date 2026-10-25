@@ -276,7 +276,10 @@ def test_library_shell_exposes_search_and_pagination(client):
     assert 'id="library-search-input"' in page.text
     assert 'id="library-pagination"' in page.text
     assert 'id="reading-progress"' in page.text
+    assert 'id="player-panel"' in page.text
     assert 'id="player-time"' in page.text
+    assert 'id="btn-player-toggle"' in page.text
+    assert 'id="btn-player-close"' not in page.text
     assert 'id="reading-chapter-time"' not in page.text
     assert 'id="reading-book-percent"' not in page.text
     assert "navydev.top@gmail.com" in page.text
@@ -297,6 +300,14 @@ def test_library_shell_exposes_search_and_pagination(client):
     library_css = client.get("/styles/library.css")
     assert library_css.status_code == 200
     assert "grid-template-columns: repeat(6, minmax(0, 1fr));" in library_css.text
+
+    app_js = client.get("/js/app.js")
+    assert app_js.status_code == 200
+    assert "setPlayerCollapsed" in app_js.text
+
+    player_css = client.get("/styles/player.css")
+    assert player_css.status_code == 200
+    assert ".player.is-collapsed .player-panel" in player_css.text
 
 
 def test_book_open_count_is_recorded_and_sorted(client, epub2_bytes: bytes):

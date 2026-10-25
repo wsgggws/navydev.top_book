@@ -5,22 +5,22 @@ import test from 'node:test';
 const source = await readFile(new URL('./util.js', import.meta.url), 'utf8');
 const util = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 
-test('formatDuration uses human-readable Chinese units', () => {
-  assert.equal(util.formatDuration(0), '0秒');
-  assert.equal(util.formatDuration(59), '59秒');
-  assert.equal(util.formatDuration(60), '1分钟');
-  assert.equal(util.formatDuration(61), '1分钟1秒');
-  assert.equal(util.formatDuration(666), '11分钟6秒');
-  assert.equal(util.formatDuration(3600), '1小时');
-  assert.equal(util.formatDuration(3601), '1小时1秒');
-  assert.equal(util.formatDuration(3661), '1小时1分钟1秒');
-  assert.equal(util.formatDuration(7325), '2小时2分钟5秒');
+test('formatTime uses mm:ss and hh:mm:ss', () => {
+  assert.equal(util.formatTime(0), '00:00');
+  assert.equal(util.formatTime(59), '00:59');
+  assert.equal(util.formatTime(60), '01:00');
+  assert.equal(util.formatTime(61), '01:01');
+  assert.equal(util.formatTime(666), '11:06');
+  assert.equal(util.formatTime(3600), '01:00:00');
+  assert.equal(util.formatTime(3601), '01:00:01');
+  assert.equal(util.formatTime(3661), '01:01:01');
+  assert.equal(util.formatTime(7325), '02:02:05');
 });
 
-test('formatDuration clamps invalid and fractional values', () => {
-  assert.equal(util.formatDuration(-1), '0秒');
-  assert.equal(util.formatDuration(Number.NaN), '0秒');
-  assert.equal(util.formatDuration(59.9), '59秒');
+test('formatTime clamps invalid and fractional values', () => {
+  assert.equal(util.formatTime(-1), '00:00');
+  assert.equal(util.formatTime(Number.NaN), '00:00');
+  assert.equal(util.formatTime(59.9), '00:59');
 });
 
 test('chapterTimeMetrics covers the whole chapter and cumulative play time', () => {

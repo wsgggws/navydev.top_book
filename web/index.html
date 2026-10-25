@@ -175,40 +175,46 @@
 
 <!-- 听书条 -->
 <footer class="player" id="player" hidden>
-  <div class="player-left">
-    <button class="icon-btn" id="btn-prev" aria-label="上一句" title="上一句">
-      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 5v10M15 5l-7 5 7 5z"/></svg>
-    </button>
-    <button class="icon-btn icon-btn-primary" id="btn-play" aria-label="播放" title="播放 / 暂停 (Space)">
-      <svg viewBox="0 0 20 20" aria-hidden="true" id="play-icon"><path d="M6 4l10 6-10 6z"/></svg>
-    </button>
-    <button class="icon-btn" id="btn-next" aria-label="下一句" title="下一句">
-      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M14 5v10M5 5l7 5-7 5z"/></svg>
-    </button>
-  </div>
-  <div class="player-mid">
-    <div class="player-title" id="player-chapter">—</div>
-    <div class="player-bar"><div class="player-bar-fill" id="player-progress"></div></div>
-  </div>
-  <div class="player-right">
-    <span class="player-time" id="player-time">0秒 / 0秒</span>
-    <div class="pop-wrap">
-      <button class="text-btn" id="btn-rate" title="倍速" aria-haspopup="true" aria-expanded="false">1.0×</button>
-      <div class="popup" id="rate-menu" hidden role="menu" aria-label="倍速">
-        <button role="menuitem" data-rate="0.75">0.75×</button>
-        <button role="menuitem" data-rate="1">1.0×</button>
-        <button role="menuitem" data-rate="1.25">1.25×</button>
-        <button role="menuitem" data-rate="1.5">1.5×</button>
-        <button role="menuitem" data-rate="1.75">1.75×</button>
-        <button role="menuitem" data-rate="2">2.0×</button>
-      </div>
+  <div class="player-panel" id="player-panel">
+    <div class="player-left">
+      <button class="icon-btn" id="btn-prev" aria-label="上一句" title="上一句">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 5v10M15 5l-7 5 7 5z"/></svg>
+      </button>
+      <button class="icon-btn icon-btn-primary" id="btn-play" aria-label="播放" title="播放 / 暂停 (Space)">
+        <svg viewBox="0 0 20 20" aria-hidden="true" id="play-icon"><path d="M6 4l10 6-10 6z"/></svg>
+      </button>
+      <button class="icon-btn" id="btn-next" aria-label="下一句" title="下一句">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M14 5v10M5 5l7 5-7 5z"/></svg>
+      </button>
     </div>
-    <button class="text-btn" id="btn-voice" title="音色">—</button>
-    <button class="icon-btn" id="btn-player-close" aria-label="关闭听书条" title="关闭">
-      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15"/></svg>
-    </button>
+    <div class="player-mid">
+      <div class="player-title" id="player-chapter">—</div>
+      <div class="player-bar"><div class="player-bar-fill" id="player-progress"></div></div>
+    </div>
+    <div class="player-right">
+      <span class="player-time" id="player-time">00:00 / 00:00</span>
+      <div class="pop-wrap">
+        <button class="text-btn" id="btn-rate" title="倍速" aria-haspopup="true" aria-expanded="false">1.0×</button>
+        <div class="popup" id="rate-menu" hidden role="menu" aria-label="倍速">
+          <button role="menuitem" data-rate="0.75">0.75×</button>
+          <button role="menuitem" data-rate="1">1.0×</button>
+          <button role="menuitem" data-rate="1.25">1.25×</button>
+          <button role="menuitem" data-rate="1.5">1.5×</button>
+          <button role="menuitem" data-rate="1.75">1.75×</button>
+          <button role="menuitem" data-rate="2">2.0×</button>
+        </div>
+      </div>
+      <button class="text-btn" id="btn-voice" title="音色">—</button>
+    </div>
+    <div class="player-status" id="player-status" aria-live="polite"></div>
   </div>
-  <div class="player-status" id="player-status" aria-live="polite"></div>
+  <button class="icon-btn player-toggle" id="btn-player-toggle"
+    aria-label="收起播放控制" aria-controls="player-panel" aria-expanded="true"
+    title="收起播放控制">
+    <svg viewBox="0 0 20 20" aria-hidden="true">
+      <path d="M8 4.5L13.5 10L8 15.5"/>
+    </svg>
+  </button>
 </footer>
 
 <div class="overlay" id="overlay" hidden></div>

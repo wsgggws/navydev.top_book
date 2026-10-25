@@ -50,23 +50,9 @@ export function formatTime(seconds) {
   const rest = total % 60;
   const hours = Math.floor(minutes / 60);
   if (hours > 0) {
-    return `${hours}:${String(minutes % 60).padStart(2, '0')}:${String(rest).padStart(2, '0')}`;
+    return `${String(hours).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}:${String(rest).padStart(2, '0')}`;
   }
   return `${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`;
-}
-
-/** Format a duration in Chinese, omitting zero-valued leading units. */
-export function formatDuration(seconds) {
-  if (!Number.isFinite(seconds) || seconds < 0) seconds = 0;
-  const total = Math.floor(seconds);
-  const hours = Math.floor(total / 3600);
-  const minutes = Math.floor((total % 3600) / 60);
-  const rest = total % 60;
-  const parts = [];
-  if (hours > 0) parts.push(`${hours}小时`);
-  if (minutes > 0) parts.push(`${minutes}分钟`);
-  if (rest > 0 || parts.length === 0) parts.push(`${rest}秒`);
-  return parts.join('');
 }
 
 /** Estimate narration duration from the chapter text. */

@@ -120,7 +120,8 @@ Markdown 源格式见 [AGENTS.md](AGENTS.md)。
 - 网页：`localStorage` 的 `lector.settings`、`lector.book`、`lector.books`
 - 终端：`~/.config/lector/progress.json` 及同目录配置
 - `open_count` 是服务端全局打开次数，只影响书架热度排序，不是阅读进度
-- 网页听书条显示本章累计已播时间/章节总时长；全书百分比显示在书架卡片
+- 网页听书条显示本章累计已播时间/章节总时长（`mm:ss`；有小时用 `hh:mm:ss`）；
+  全书百分比显示在书架卡片
 
 两端互不覆盖。服务端 `/progress` 接口仅作为可选兼容能力保留。
 

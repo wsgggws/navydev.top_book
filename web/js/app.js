@@ -7,7 +7,7 @@ import { LibraryView } from './views/library.js';
 import { ReaderView } from './views/reader.js';
 import { TocDrawer } from './views/toc.js';
 import {
-  chapterTimeMetrics, clamp, debounce, el, formatDuration, isTypingTarget,
+  chapterTimeMetrics, clamp, debounce, el, formatTime, isTypingTarget,
 } from './util.js';
 
 const $ = (selector) => document.querySelector(selector);
@@ -31,6 +31,7 @@ const dom = {
   overlay: $('#overlay'),
   toast: $('#toast'),
   player: $('#player'),
+  playerPanel: $('#player-panel'),
   playerChapter: $('#player-chapter'),
   playerProgress: $('#player-progress'),
   playerTime: $('#player-time'),
@@ -41,7 +42,7 @@ const dom = {
   btnRate: $('#btn-rate'),
   rateMenu: $('#rate-menu'),
   btnVoice: $('#btn-voice'),
-  btnPlayerClose: $('#btn-player-close'),
+  btnPlayerToggle: $('#btn-player-toggle'),
 };
 
 const player = new Player();
@@ -341,6 +342,7 @@ async function openBook(bookId, { chapterId = null, fromRoute = false } = {}) {
     dom.library.hidden = true;
     dom.reader.hidden = false;
     dom.player.hidden = false;
+    setPlayerCollapsed(false);
     dom.btnBack.hidden = false;
     dom.topbarBook.textContent = payload.book.title;
     await loadToc();
@@ -516,8 +518,8 @@ function updateReadingProgress() {
   const progress = metrics.total > 0
     ? Math.min(100, Math.round((metrics.elapsed / metrics.total) * 100))
     : 0;
-  const elapsedLabel = formatDuration(metrics.elapsed);
-  const totalLabel = formatDuration(metrics.total);
+  const elapsedLabel = formatTime(metrics.elapsed);
+  const totalLabel = formatTime(metrics.total);
   dom.readingChapterFill.style.width = `${progress}%`;
   dom.readingChapterProgress.setAttribute('aria-valuenow', String(progress));
   dom.playerProgress.style.width = `${progress}%`;
@@ -723,10 +725,20 @@ dom.btnPlay.addEventListener('click', () => {
 });
 dom.btnPrev.addEventListener('click', () => stepSentence(-1));
 dom.btnNext.addEventListener('click', () => stepSentence(1));
-dom.btnPlayerClose.addEventListener('click', () => {
-  player.stop();
-  dom.player.hidden = true;
-  if (state.cursor) reader.clearWords(state.cursor.sentence_id);
+
+function setPlayerCollapsed(collapsed) {
+  dom.player.classList.toggle('is-collapsed', collapsed);
+  dom.playerPanel.toggleAttribute('inert', collapsed);
+  dom.playerPanel.setAttribute('aria-hidden', String(collapsed));
+  dom.btnPlayerToggle.setAttribute('aria-expanded', String(!collapsed));
+  const label = collapsed ? '展开播放控制' : '收起播放控制';
+  dom.btnPlayerToggle.setAttribute('aria-label', label);
+  dom.btnPlayerToggle.title = label;
+  if (collapsed) closeRateMenu();
+}
+
+dom.btnPlayerToggle.addEventListener('click', () => {
+  setPlayerCollapsed(!dom.player.classList.contains('is-collapsed'));
 });
 /* 倍速：点一下弹出菜单，而不是一轮轮地转 */
 const RATE_STEPS = [0.75, 1, 1.25, 1.5, 1.75, 2];
