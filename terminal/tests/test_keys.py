@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import subprocess
+import sys
 
 
 def test_vim_navigation_and_play_keys_are_registered():
@@ -65,3 +67,20 @@ def test_q_quits_from_the_bookshelf(monkeypatch):
             assert app.is_running is False
 
     asyncio.run(scenario())
+
+
+def test_app_import_does_not_probe_terminal_graphics():
+    """--version and --check must not emit image-protocol escape sequences."""
+    code = (
+        "import sys\n"
+        "import lector_tui.app\n"
+        "raise SystemExit('textual_image' in sys.modules)\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""

@@ -15,7 +15,6 @@ from textual.theme import Theme
 from lector_tui.api import ApiClient
 from lector_tui.audio import AudioPlayer
 from lector_tui.config import ClientConfig
-from lector_tui.screens.library import LibraryScreen
 from lector_tui.theme import resolve_theme
 
 #: The three themes of the interface specification.
@@ -282,6 +281,11 @@ class LectorApp(App):
         self._apply_theme(preference, actual=theme, save=False)
 
     def on_mount(self) -> None:
+        # Image capability probing writes escape sequences to the terminal.
+        # Import the screens only when the TUI starts, never for --version or
+        # --check, otherwise those one-shot commands produce stray output.
+        from lector_tui.screens.library import LibraryScreen
+
         self.push_screen(LibraryScreen())
 
     def connect_to(self, url: str, token: str) -> None:
