@@ -299,10 +299,28 @@ def main(argv: list[str] | None = None) -> None:
         "--theme",
         help="auto（默认）、ansi-dark、ansi-light、dracula、catppuccin-mocha 等",
     )
+    parser.add_argument("--check", action="store_true", help="检查服务器连接后退出")
     parser.add_argument("--version", action="version", version=f"%(prog)s {_version()}")
     args = parser.parse_args(argv)
 
     config = ClientConfig.load()
+    if args.check:
+        client = ApiClient(
+            base_url=args.url or config.url,
+            token=args.token if args.token is not None else config.token,
+        )
+        try:
+            health = client.health()
+            books = client.list_books()
+        except Exception as exc:  # noqa: BLE001 - a CLI probe should explain failure
+            print(f"连接失败：{exc}")
+            raise SystemExit(1) from exc
+        print(
+            f"OK {client.base_url} · {health.get('status', 'unknown')} · "
+            f"{len(books)} books"
+        )
+        return
+
     preference = args.theme or config.theme
     LectorApp(
         base_url=args.url,

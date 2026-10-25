@@ -32,6 +32,7 @@ lector
 ```bash
 lector --url https://navydev.top/ebook --token "$LECTOR_TOKEN"
 lector --theme dracula
+lector --check
 lector --version
 ```
 

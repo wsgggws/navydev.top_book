@@ -21,9 +21,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14
+          - os: macos-15
             arch: arm64
-          - os: macos-13
+          - os: macos-15-intel
             arch: x86_64
     steps:
       - name: Checkout
@@ -65,14 +65,15 @@ jobs:
       - name: Create or update the GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
           if gh release view "${TAG}" >/dev/null 2>&1; then
-            gh release upload "${TAG}" artifacts/*.tar.gz --clobber
+            gh release upload "${TAG}" artifacts/*.tar.gz artifacts/*.sha256 --clobber
           else
-            gh release create "${TAG}" artifacts/*.tar.gz \
+            gh release create "${TAG}" artifacts/*.tar.gz artifacts/*.sha256 \
               --target "${GITHUB_SHA}" \
               --title "Lector Terminal ${TAG}" \
-              --notes "Standalone macOS binary: no Python installation required."
+              --notes "Standalone macOS binaries: no Python installation required."
           fi

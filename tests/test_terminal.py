@@ -73,6 +73,24 @@ def test_terminal_opens_a_book_and_reads(server, epub2_bytes: bytes):
     asyncio.run(scenario())
 
 
+def test_terminal_check_mode_connects_without_a_token(
+    server, epub2_bytes: bytes, capsys
+):
+    """The packaged binary can verify HTTPS and the API without opening the TUI."""
+    import httpx
+
+    from lector_tui.app import main
+
+    httpx.post(
+        f"{server}/api/v1/books",
+        files={"file": ("book.epub", epub2_bytes, "application/epub+zip")},
+    )
+    main(["--check", "--url", server, "--token", ""])
+    output = capsys.readouterr().out
+    assert "OK" in output
+    assert "1 books" in output
+
+
 def test_terminal_moves_the_cursor(server, epub2_bytes: bytes):
     """Arrow keys move the one cursor."""
     from lector_tui.app import LectorApp
