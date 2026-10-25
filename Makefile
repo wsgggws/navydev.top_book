@@ -40,6 +40,7 @@ books/%.epub:
 	 fi
 
 test:  ## 跑测试（服务端 + 终端端）
+	@node --test web/js/util.test.mjs
 	@$(UV) run pytest -q
 	@cd terminal && $(UV) run pytest -q
 

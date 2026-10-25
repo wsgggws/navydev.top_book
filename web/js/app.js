@@ -6,7 +6,9 @@ import { Player } from './player.js';
 import { LibraryView } from './views/library.js';
 import { ReaderView } from './views/reader.js';
 import { TocDrawer } from './views/toc.js';
-import { clamp, debounce, el, formatTime, isTypingTarget, splitWords } from './util.js';
+import {
+  chapterTimeMetrics, clamp, debounce, el, formatDuration, isTypingTarget,
+} from './util.js';
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -22,8 +24,8 @@ const dom = {
   btnSettings: $('#btn-settings'),
   library: $('#library'),
   reader: $('#reader'),
+  readingChapterProgress: $('#reading-progress'),
   readingChapterFill: $('#reading-chapter-fill'),
-  readingChapterTime: $('#reading-chapter-time'),
   drawerToc: $('#drawer-toc'),
   drawerSettings: $('#drawer-settings'),
   overlay: $('#overlay'),
@@ -499,21 +501,6 @@ function rememberPosition(cursor) {
   });
 }
 
-function estimatedSentenceSeconds(sentence) {
-  if (!sentence) return 0;
-  let cjk = 0;
-  let latin = 0;
-  for (const [start, end] of splitWords(sentence.text || '')) {
-    const token = sentence.text.slice(start, end);
-    if (/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(token)) {
-      cjk += 1;
-    } else {
-      latin += 1;
-    }
-  }
-  return cjk * 0.24 + latin * 0.33;
-}
-
 function updateReadingProgress() {
   if (!state.book || !state.chapter) return;
   const sentenceById = new Map(state.sentences().map((sentence) => [sentence.id, sentence]));
@@ -521,35 +508,21 @@ function updateReadingProgress() {
     .map((sentenceId) => sentenceById.get(sentenceId))
     .filter(Boolean);
   const currentId = state.cursor ? state.cursor.sentence_id : null;
-  const measured = new Map(
-    state.timeline.map((entry) => [
-      entry.sentence_id,
-      Math.max(0, entry.end - entry.start),
-    ]),
-  );
-  let elapsed = 0;
-  let total = 0;
-  let foundCurrent = !currentId;
-  for (const sentence of sentences) {
-    const duration = measured.has(sentence.id)
-      ? measured.get(sentence.id)
-      : estimatedSentenceSeconds(sentence);
-    total += duration;
-    if (sentence.id === currentId) {
-      foundCurrent = true;
-      if (player.playing && player.sentenceId === sentence.id) {
-        elapsed += clamp(player.position || 0, 0, duration);
-      }
-      continue;
-    }
-    if (!foundCurrent) elapsed += duration;
-  }
-  const remaining = Math.max(0, total - elapsed);
-  dom.readingChapterTime.textContent =
-    `本章已读 ${Math.floor(elapsed)} 秒 · 剩余 ${Math.ceil(remaining)} 秒`;
-  dom.readingChapterFill.style.width = total > 0
-    ? `${Math.min(100, Math.round((elapsed / total) * 100))}%`
-    : '0%';
+  const metrics = chapterTimeMetrics(sentences, state.timeline, {
+    currentId,
+    playerSentenceId: player.sentenceId,
+    playerPosition: player.position || 0,
+  });
+  const progress = metrics.total > 0
+    ? Math.min(100, Math.round((metrics.elapsed / metrics.total) * 100))
+    : 0;
+  const elapsedLabel = formatDuration(metrics.elapsed);
+  const totalLabel = formatDuration(metrics.total);
+  dom.readingChapterFill.style.width = `${progress}%`;
+  dom.readingChapterProgress.setAttribute('aria-valuenow', String(progress));
+  dom.playerProgress.style.width = `${progress}%`;
+  dom.playerTime.textContent = `${elapsedLabel} / ${totalLabel}`;
+  dom.playerTime.title = `本章累计已播 ${elapsedLabel} / 总时长 ${totalLabel}`;
 }
 
 const measureProgress = debounce(async () => {
@@ -897,15 +870,6 @@ function stepSentence(offset) {
 }
 
 function updatePlayerTime() {
-  const total = state.timeline.length
-    ? state.timeline[state.timeline.length - 1].end
-    : 0;
-  const current = player.sentenceId;
-  const entry = state.timeline.find((item) => item.sentence_id === current);
-  const elapsed = entry ? entry.start + (player.position || 0) : (player.position || 0);
-  dom.playerTime.textContent = `${formatTime(elapsed)} / ${formatTime(total)}`;
-  const progress = player.chapterProgress();
-  dom.playerProgress.style.width = `${Math.round(progress * 100)}%`;
   updateReadingProgress();
 }
 

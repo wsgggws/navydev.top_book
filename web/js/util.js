@@ -55,6 +55,74 @@ export function formatTime(seconds) {
   return `${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`;
 }
 
+/** Format a duration in Chinese, omitting zero-valued leading units. */
+export function formatDuration(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) seconds = 0;
+  const total = Math.floor(seconds);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const rest = total % 60;
+  const parts = [];
+  if (hours > 0) parts.push(`${hours}小时`);
+  if (minutes > 0) parts.push(`${minutes}分钟`);
+  if (rest > 0 || parts.length === 0) parts.push(`${rest}秒`);
+  return parts.join('');
+}
+
+/** Estimate narration duration from the chapter text. */
+export function estimatedSentenceSeconds(sentence) {
+  if (!sentence) return 0;
+  let cjk = 0;
+  let latin = 0;
+  for (const [start, end] of splitWords(sentence.text || '')) {
+    const token = sentence.text.slice(start, end);
+    if (/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(token)) {
+      cjk += 1;
+    } else {
+      latin += 1;
+    }
+  }
+  return cjk * 0.24 + latin * 0.33;
+}
+
+/**
+ * Chapter playback metrics.
+ *
+ * Synthesised sentences use their measured audio duration. Everything else is
+ * estimated from text, so the total covers the whole chapter before all audio
+ * has been generated.
+ */
+export function chapterTimeMetrics(
+  sentences,
+  timeline,
+  { currentId = null, playerSentenceId = null, playerPosition = 0 } = {},
+) {
+  const measured = new Map(
+    timeline.map((entry) => [
+      entry.sentence_id,
+      Math.max(0, entry.end - entry.start),
+    ]),
+  );
+  let elapsed = 0;
+  let total = 0;
+  let foundCurrent = !currentId;
+  for (const sentence of sentences) {
+    const duration = measured.has(sentence.id)
+      ? measured.get(sentence.id)
+      : estimatedSentenceSeconds(sentence);
+    total += duration;
+    if (sentence.id === currentId) {
+      foundCurrent = true;
+      if (playerSentenceId === sentence.id) {
+        elapsed += clamp(playerPosition, 0, duration);
+      }
+      continue;
+    }
+    if (!foundCurrent) elapsed += duration;
+  }
+  return { elapsed: Math.min(elapsed, total), total };
+}
+
 export function escapeHtml(text) {
   return String(text).replace(/[&<>"']/g, (char) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',

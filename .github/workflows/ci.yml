@@ -28,6 +28,9 @@ jobs:
       - name: Install server dependencies
         run: uv sync --frozen
 
+      - name: Test frontend helpers
+        run: node --test web/js/util.test.mjs
+
       - name: Test server
         run: uv run pytest -q
 

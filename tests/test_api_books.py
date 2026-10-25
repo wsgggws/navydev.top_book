@@ -275,7 +275,9 @@ def test_library_shell_exposes_search_and_pagination(client):
     assert page.status_code == 200
     assert 'id="library-search-input"' in page.text
     assert 'id="library-pagination"' in page.text
-    assert 'id="reading-chapter-time"' in page.text
+    assert 'id="reading-progress"' in page.text
+    assert 'id="player-time"' in page.text
+    assert 'id="reading-chapter-time"' not in page.text
     assert 'id="reading-book-percent"' not in page.text
     assert "navydev.top@gmail.com" in page.text
     assert 'href="favicon.png"' in page.text

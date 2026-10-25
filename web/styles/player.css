@@ -87,7 +87,8 @@
 
 @media (max-width: 639px) {
   .player { gap: var(--sp-2); padding: 0 var(--sp-2); }
-  .player-time, #btn-voice { display: none; }
+  .player-time { font-size: 10px; }
+  #btn-voice { display: none; }
 }
 
 /* 跟随按钮：暂停时用一个小圆点提示当前句已经离屏 */

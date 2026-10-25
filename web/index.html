@@ -77,12 +77,10 @@
 
   <!-- 阅读 -->
   <section class="reader" id="reader" aria-label="正文" hidden>
-    <div class="reading-progress" id="reading-progress" aria-live="polite">
+    <div class="reading-progress" id="reading-progress" role="progressbar"
+      aria-label="本章播放进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
       <div class="reading-progress-track" aria-hidden="true">
         <span id="reading-chapter-fill"></span>
-      </div>
-      <div class="reading-progress-copy">
-        <span id="reading-chapter-time">本章已读 0 秒 · 剩余 0 秒</span>
       </div>
     </div>
     <div class="reader-scroll" id="reader-scroll">
@@ -193,7 +191,7 @@
     <div class="player-bar"><div class="player-bar-fill" id="player-progress"></div></div>
   </div>
   <div class="player-right">
-    <span class="player-time" id="player-time">00:00 / 00:00</span>
+    <span class="player-time" id="player-time">0秒 / 0秒</span>
     <div class="pop-wrap">
       <button class="text-btn" id="btn-rate" title="倍速" aria-haspopup="true" aria-expanded="false">1.0×</button>
       <div class="popup" id="rate-menu" hidden role="menu" aria-label="倍速">

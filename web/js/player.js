@@ -250,15 +250,6 @@ export class Player {
     this._frame = null;
   }
 
-  /** Progress of the current chapter, 0..1. */
-  chapterProgress() {
-    const sentences = state.sentences();
-    if (!sentences.length) return 0;
-    const index = sentences.findIndex((sentence) => sentence.id === this.sentenceId);
-    if (index < 0) return 0;
-    return (index + 1) / sentences.length;
-  }
-
   /**
    * Stop and forget everything.
    *
