@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import ssl
 from dataclasses import dataclass
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
+
+import certifi
 
 
 class ApiError(Exception):
@@ -40,12 +43,16 @@ class ApiClient:
             url = f"{url}?{urlencode(params)}"
         return url
 
+    def _ssl_context(self) -> ssl.SSLContext:
+        """Use the CA bundle shipped with the standalone binary."""
+        return ssl.create_default_context(cafile=certifi.where())
+
     def request(self, path: str, params: dict | None = None):
         """Perform one read-only request and return the decoded payload."""
         headers = self._headers()
         request = Request(self._url(path, params), headers=headers, method="GET")
         try:
-            with urlopen(request, timeout=30) as response:
+            with urlopen(request, timeout=30, context=self._ssl_context()) as response:
                 payload = response.read()
                 if not payload:
                     return None
@@ -94,7 +101,7 @@ class ApiClient:
     def download_audio(self, book_id: str, sentence_id: str, target: str) -> str:
         """Download one sentence tile to a local file."""
         request = Request(self.audio_url(book_id, sentence_id), headers=self._headers())
-        with urlopen(request, timeout=60) as response:
+        with urlopen(request, timeout=60, context=self._ssl_context()) as response:
             data = response.read()
         with open(target, "wb") as handle:
             handle.write(data)

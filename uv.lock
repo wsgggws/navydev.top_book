@@ -411,14 +411,18 @@ wheels = [
 
 [[package]]
 name = "lector-tui"
-version = "1.2.0"
+version = "1.2.1"
 source = { directory = "terminal" }
 dependencies = [
+    { name = "certifi" },
     { name = "textual" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "textual", specifier = ">=0.80" }]
+requires-dist = [
+    { name = "certifi", specifier = ">=2026.10.23" },
+    { name = "textual", specifier = ">=0.80" },
+]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=8.0" }]

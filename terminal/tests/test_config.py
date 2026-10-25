@@ -69,3 +69,14 @@ def test_token_file_is_not_world_readable(tmp_path, monkeypatch):
     path = tmp_path / "reader.json"
     ClientConfig(url="http://x", token="secret", path=path).save()
     assert oct(path.stat().st_mode)[-3:] == "600"
+
+
+def test_api_client_has_a_bundled_ca_file():
+    import certifi
+
+    from lector_tui.api import ApiClient
+
+    assert ApiClient()._ssl_context().verify_mode.name == "CERT_REQUIRED"
+    from pathlib import Path
+
+    assert Path(certifi.where()).is_file()
