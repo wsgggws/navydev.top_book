@@ -34,14 +34,14 @@ def test_builtin_theme_names_are_accepted():
     app.audio.cleanup()
 
 
-def test_reader_highlight_avoids_background_colours_and_narrows_the_page():
+def test_reader_highlight_avoids_background_colours_and_keeps_a_wider_left_aligned_page():
     from lector_tui.app import LectorApp
 
     css = LectorApp.CSS
     assert "text-style: reverse bold" in css
     assert "text-style: bold underline" in css
-    assert "width: 82%;" in css
-    assert "max-width: 72;" in css
+    assert "width: 92%;" in css
+    assert "max-width: 96;" in css
     assert "background: $accent 35%" not in css
     assert "background: $accent 55%" not in css
 

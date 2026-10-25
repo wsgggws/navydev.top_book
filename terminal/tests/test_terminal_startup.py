@@ -9,7 +9,7 @@ import time
 import pytest
 
 
-def boot_in_terminal(args, *, program="WezTerm", zero_size=False):
+def boot_in_terminal(args, *, program="WezTerm", zero_size=False, tmux=False, sixel=True):
     import fcntl
     import pty
     import struct
@@ -21,11 +21,13 @@ def boot_in_terminal(args, *, program="WezTerm", zero_size=False):
     env = dict(os.environ, TERM="xterm-256color", TERM_PROGRAM=program)
     for name in ("WEZTERM_PANE", "KITTY_WINDOW_ID", "TMUX"):
         env.pop(name, None)
+    if tmux:
+        env["TMUX"] = "/tmp/lector-test,1,0"
     if program == "kitty":
         env["TERM"] = "xterm-kitty"
     code = (
         "from lector_tui import app; import time; "
-        "app.LectorApp.run=lambda self: print('UI_READY',flush=True); "
+        "app.LectorApp.run=lambda self: print('UI_READY', __import__('textual_image._terminal',fromlist=['probe_terminal']).probe_terminal(),flush=True); "
         f"app.main({args!r}); time.sleep(.1)"
     )
     process = subprocess.Popen([sys.executable, "-c", code], stdin=slave, stdout=slave, stderr=slave, env=env)
@@ -52,7 +54,7 @@ def boot_in_terminal(args, *, program="WezTerm", zero_size=False):
                 break
             output += chunk
             if b"\x1b[c" in output and "da" not in answered:
-                os.write(master, b"\x1b[?62;4c")
+                os.write(master, b"\x1b[?62;4c" if sixel else b"\x1b[?62;6c")
                 answered.add("da")
                 if b"\x1b_G" in output:
                     late = time.monotonic() + .025
@@ -94,3 +96,12 @@ def test_one_shot_commands_emit_no_probe_even_in_a_real_tty(option):
     code, output = boot_in_terminal([option])
     assert code == 0
     assert b"\x1b" not in output and b"^[_G" not in output, repr(output)
+
+
+@pytest.mark.parametrize("program", ["WezTerm", "kitty"])
+def test_tmux_validates_virtual_terminal_instead_of_inheriting_outer_graphics(program):
+    code, output = boot_in_terminal(["--theme", "night"], program=program, tmux=True, sixel=False)
+    assert code == 0 and b"UI_READY" in output, repr(output)
+    assert b"\x1b[c" in output, "tmux must be queried even when outer terminal is known"
+    assert b"sixel=False, tgp=False" in output, repr(output)
+    assert b"\x1b_G" not in output

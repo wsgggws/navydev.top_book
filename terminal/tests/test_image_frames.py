@@ -185,3 +185,25 @@ def test_sixel_crop_cache_is_bounded_and_reuses_scroll_back(frames, monkeypatch)
             assert impl._bitmap_bytes <= 8 * 1024 * 1024
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("trigger", ["focus", "ctrl+l"])
+def test_returning_to_terminal_repaints_cached_images_after_tmux_window_switch(frames, trigger):
+    from textual.events import AppFocus
+
+    async def scenario():
+        app = ImageHost()
+        async with app.run_test(size=(80, 30)) as pilot:
+            await pilot.pause()
+            image = app.query_one(_WholeSixels)
+            pixels = image._pixels
+            frames.clear()
+            if trigger == "focus":
+                app.post_message(AppFocus())
+            else:
+                await pilot.press(trigger)
+            await pilot.pause()
+            assert graphic_frames(frames), 'returning to a tmux window must restore its cached bitmap'
+            assert image._pixels is pixels, 'focus restoration must reuse decoded pixels'
+
+    asyncio.run(scenario())

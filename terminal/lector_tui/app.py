@@ -154,22 +154,24 @@ class LectorApp(ImageApp):
     #text-area {
         width: 1fr;
         height: 1fr;
-        align: center middle;
+        align: left middle;
     }
 
     #text-pane {
-        width: 82%;
-        max-width: 72;
+        width: 92%;
+        max-width: 96;
+        margin-left: 1;
         height: auto;
         max-height: 34;
         overflow-y: auto;
-        padding: 0 3;
+        padding: 0 2;
         border-top: solid $panel;
         border-bottom: solid $panel;
     }
 
     Screen.fullscreen #text-pane {
         width: 100%;
+        margin-left: 0;
         max-width: 100%;
         max-height: 100%;
         border-top: none;
@@ -360,7 +362,7 @@ class LectorApp(ImageApp):
     def action_help(self) -> None:
         """Show the key bindings."""
         self.notify(
-            "hjkl 移动 · Space/p 播放暂停 · r 重播 · +/- 倍速 · v 男女声 · / 搜索 · [ ] 换章 · t 目录 · f 全屏 · m 主题 · q 返回",
+            "hjkl 移动 · Space/p 播放暂停 · r 重播 · +/- 倍速 · v 男女声 · Ctrl+l 重绘 · / 搜索 · [ ] 换章 · t 目录 · f 全屏 · m 主题 · q 返回",
             title="快捷键",
             timeout=8,
         )

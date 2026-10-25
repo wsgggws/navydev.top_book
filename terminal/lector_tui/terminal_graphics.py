@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import re
 import select
+import subprocess
 import sys
 import time
 
@@ -49,10 +50,33 @@ def _query_sixel(need_cell_size: bool, timeout: float = 0.2) -> tuple[bool, int,
     )
 
 
+def _tmux_can_display_sixel() -> bool:
+    """A compiled-in decoder is insufficient if the attached client lacks Sixel.
+
+    Read only tmux's virtual-terminal metadata; never change user/server options.
+    Unknown/older versions and detached clients use the visible text fallback.
+    """
+    pane = os.environ.get("TMUX_PANE", "")
+    if not re.fullmatch(r"%[0-9]+", pane):
+        return False
+    try:
+        result = subprocess.run(
+            ["tmux", "display-message", "-p", "-t", pane,
+             "#{sixel_support}\t#{client_termfeatures}"],
+            capture_output=True, text=True, timeout=0.25, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    built, _, features = result.stdout.strip().partition("\t")
+    return result.returncode == 0 and built == "1" and "sixel" in features.split(",")
+
+
 def configure_graphics() -> None:
     """Seed textual-image's cached result before importing its renderers.
 
-    Known WezTerm/Kitty sessions need no graphic round trip. An unknown terminal
+    Direct WezTerm/Kitty sessions need no graphic round trip. tmux must confirm
+    its own Sixel capability: outer terminal environment variables do not prove
+    that a multiplexer can render native graphics. An unknown terminal
     gets a bounded Sixel DA query, never a Kitty APC query. Non-TTY commands do
     no terminal I/O. Ioctl dimensions can be zero in a newly opened PTY.
     """
@@ -74,14 +98,17 @@ def configure_graphics() -> None:
             height = pixels_y // rows if rows else 0
         except (OSError, ValueError):
             pass
-        kitty = terminal == "xterm-kitty" or bool(os.environ.get("KITTY_WINDOW_ID"))
-        sixel = not kitty and (
+        multiplexed = bool(os.environ.get("TMUX")) or terminal.startswith(("tmux", "screen"))
+        kitty = not multiplexed and (terminal == "xterm-kitty" or bool(os.environ.get("KITTY_WINDOW_ID")))
+        sixel = not multiplexed and not kitty and (
             os.environ.get("TERM_PROGRAM", "").lower() == "wezterm"
             or bool(os.environ.get("WEZTERM_PANE"))
         )
         if not kitty and not sixel:
             try:
                 sixel, queried_width, queried_height = _query_sixel(not (width and height))
+                if sixel and os.environ.get("TMUX"):
+                    sixel = _tmux_can_display_sixel()
                 width = width or queried_width
                 height = height or queried_height
             except (ImportError, OSError, ValueError):
