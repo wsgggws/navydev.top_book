@@ -32,6 +32,9 @@ class ImageApp(App):
         a late text erase wipe the newly drawn image. Coalesce image work after
         that transaction; only the latest placement of a live widget is sent.
         """
+        # The text frame has erased these cells. Until PNG delivery completes,
+        # an unrelated footer frame must still regard this placement as dirty.
+        widget._placement = None
         self._inline_pending[widget] = (state, geometry, command)
         if getattr(self, "_inline_timer", None) is None:
             self._inline_timer = self.set_timer(.04, self._flush_inline_images)

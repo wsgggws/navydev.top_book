@@ -94,6 +94,17 @@ def test_inline_images_coalesce_scrolls_and_release_old_screen(monkeypatch):
             image = app.query_one(_WholeInlinePNG)
             assert any("a=T,f=100" in value for value in writes)
             assert image in app._inline_drawn
+            # A footer update arriving before deferred drawing must not cancel
+            # a PNG whose cells were just erased by a preceding text frame.
+            from textual._compositor import LayoutUpdate
+
+            writes.clear()
+            image_widget.image_frame(app.screen, LayoutUpdate([], Region(0, 0, 100, 30))).render_segments(app.console)
+            assert image in app._inline_pending
+            image_widget.image_frame(app.screen, LayoutUpdate([], Region(0, 29, 100, 1))).render_segments(app.console)
+            assert image in app._inline_pending, "an unrelated footer frame must preserve the pending image"
+            await pilot.pause(.12)
+            assert any("a=T,f=100" in value for value in writes)
             pane = app.query_one(ImageScroll)
             writes.clear()
             pane.scroll_to(y=4, animate=False)
