@@ -177,6 +177,57 @@ def _updated_regions(update: CompositorUpdate) -> list[Region]:
     return []
 
 
+def _outside_ranges(start: int, end: int, blocked):
+    """Yield the parts of a text span not covered by retained image pixels."""
+    for left, right in sorted(blocked):
+        if right <= start:
+            continue
+        if left >= end:
+            break
+        if left > start:
+            yield start, left
+        start = max(start, right)
+    if start < end:
+        yield start, end
+
+
+def _text_around_images(update: CompositorUpdate, images, console) -> str:
+    """Keep native PNG cells intact while Textual updates surrounding text.
+
+    Writing placeholder spaces removes terminal graphics immediately, before
+    the deferred PNG can replace them. Work on compositor strips instead of
+    parsing terminal escapes, so Unicode widths and styled text stay intact.
+    Foreground menus/notifications are excluded from the protected cells.
+    """
+    if not images or not isinstance(update, (LayoutUpdate, ChopsUpdate)):
+        return update.render_segments(console)
+    protected = {}
+    for visible, masks in images:
+        for y in range(visible.y, visible.bottom):
+            blocked = [(area.x, area.right) for area in masks if area.y <= y < area.bottom]
+            protected.setdefault(y, []).extend(_outside_ranges(visible.x, visible.right, blocked))
+
+    def spans():
+        if isinstance(update, LayoutUpdate):
+            for y, line in enumerate(update.strips, update.region.y):
+                x = update.region.x
+                for strip in line:
+                    yield x, y, strip
+                    x += strip.cell_length
+        else:
+            for y, x1, x2 in update.spans:
+                for end, (x, strip) in zip(update.chop_ends[y], update.chops[y].items()):
+                    if strip is not None and x < x2 and end > x1:
+                        yield x, y, strip.crop(0, min(end, x2) - x)
+
+    text = []
+    for x, y, strip in spans():
+        for left, right in _outside_ranges(x, x + strip.cell_length, protected.get(y, ())):
+            text.append(Control.move_to(left, y).segment.text)
+            text.append(strip.crop(left - x, right - x).render(console))
+    return "".join(text)
+
+
 def _erase_bitmap(widget, visible: Region, masks: tuple[Region, ...], console) -> str:
     """Release retained native layers even if Textual elides unchanged spaces.
 
@@ -202,9 +253,9 @@ class _ImageFrame(CompositorUpdate):
         self.screen, self.update = screen, update
 
     def render_segments(self, console) -> str:
-        text = self.update.render_segments(console)
         dirty = _updated_regions(self.update)
         graphics = []
+        retained = []
         geometry = pane_geometry() if terminal_graphics.inline_png else None
         current_inline = set()
         if terminal_graphics.inline_png:
@@ -226,8 +277,11 @@ class _ImageFrame(CompositorUpdate):
                 if visible not in masks:
                     if inline:
                         current_inline.add(widget)
+                        if widget in self.screen.app._inline_drawn:
+                            retained.append((visible, masks))
                     state = (visible, masks, id(widget.image), widget.content_size, widget._get_background_rgba(), geometry)
-                    if getattr(widget, "_placement", None) != state or any(area.overlaps(visible) for area in dirty):
+                    changed = getattr(widget, "_placement", None) != state
+                    if changed or (not inline and any(area.overlaps(visible) for area in dirty)):
                         crop = visible.translate(-region.offset)
                         relative_masks = tuple(area.translate(-visible.offset) for area in masks)
                         try:
@@ -249,6 +303,7 @@ class _ImageFrame(CompositorUpdate):
                                 widget._placement = state
             if visible:
                 covered.append(visible)
+        text = _text_around_images(self.update, retained, console)
         if terminal_graphics.inline_png:
             text = self.screen.app.retire_inline_images(current_inline, geometry) + text
         if graphics:

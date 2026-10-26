@@ -109,6 +109,8 @@ def test_real_tmux_preserves_cached_images_with_native_support_or_fallback(tmp_p
         expected_native = advertised and report["built"] == "1" and outer != "WezTerm"
         assert report["sixel"] == expected_native
         if outer == "WezTerm" and passthrough:
+            log = next(tmp_path.glob("tmux-server-*.log")).read_text(errors="replace")
+            assert "screen_write_start_sync:" not in log, "tmux must not repaint whole text lines over retained PNGs"
             packets = re.findall(rb"\x1b_G([^;\x1b]*);([A-Za-z0-9+/=]*)\x1b\\", output)
             pngs, chunks = [], []
             for header, data in packets:

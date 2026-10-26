@@ -94,11 +94,12 @@ def test_inline_images_coalesce_scrolls_and_release_old_screen(monkeypatch):
             image = app.query_one(_WholeInlinePNG)
             assert any("a=T,f=100" in value for value in writes)
             assert image in app._inline_drawn
-            # A footer update arriving before deferred drawing must not cancel
-            # a PNG whose cells were just erased by a preceding text frame.
+            # A footer update arriving before a forced redraw must not cancel
+            # its PNG, even when the image geometry itself has not changed.
             from textual._compositor import LayoutUpdate
 
             writes.clear()
+            app.action_refresh_images()
             image_widget.image_frame(app.screen, LayoutUpdate([], Region(0, 0, 100, 30))).render_segments(app.console)
             assert image in app._inline_pending
             image_widget.image_frame(app.screen, LayoutUpdate([], Region(0, 29, 100, 1))).render_segments(app.console)

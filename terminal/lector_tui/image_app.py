@@ -3,10 +3,22 @@
 from textual._compositor import CompositorUpdate
 from textual.app import App
 from textual.binding import Binding
+from lector_tui import terminal_graphics
 
 
 class ImageApp(App):
     BINDINGS = [Binding("ctrl+l", "refresh_images", "重绘图片", show=False)]
+
+    def _begin_update(self) -> None:
+        # tmux's synchronized text mode repaints whole dirty lines, erasing
+        # passthrough PNG cells even when the compositor leaves them untouched.
+        # Native Sixel and other terminals keep Textual's normal transaction.
+        if not terminal_graphics.inline_png:
+            super()._begin_update()
+
+    def _end_update(self) -> None:
+        if not terminal_graphics.inline_png:
+            super()._end_update()
 
     def begin_inline_frame(self) -> None:
         self._inline_pending = {}
@@ -32,8 +44,8 @@ class ImageApp(App):
         a late text erase wipe the newly drawn image. Coalesce image work after
         that transaction; only the latest placement of a live widget is sent.
         """
-        # The text frame has erased these cells. Until PNG delivery completes,
-        # an unrelated footer frame must still regard this placement as dirty.
+        # Until PNG delivery completes, an unrelated footer frame must still
+        # regard this placement as dirty, preserving a queued move/forced redraw.
         widget._placement = None
         self._inline_pending[widget] = (state, geometry, command)
         if getattr(self, "_inline_timer", None) is None:
