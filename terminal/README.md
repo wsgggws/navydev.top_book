@@ -19,7 +19,7 @@ brew install wsgggws/ebook/lector
 ```
 
 装的是 **PyInstaller 独立二进制**（macOS arm64 / x86_64 自带 Python 运行时），
-机器上不需要任何 Python，也不需要 pip / uv。
+机器上不需要任何 Python，也不需要 pip / uv。运行时在安装时一次性解压到 Homebrew 的私有目录，启动不再重复解包。
 
 运行：
 
@@ -65,7 +65,8 @@ LECTOR_THEME=solarized-dark lector
 
 运行中按 `m` 循环切换主题，选择会写入 `~/.config/lector/reader.json`。
 
-正文默认靠左放置，最大 96 列、最多 34 行，保留少量留白。插图按比例缩放为
+正文在扣除目录的右侧区域居中，最大 96 列、最多 34 行，左右等宽留白。
+中英文普通段落首行缩进 4 个终端单元格（中文两字 / 英文四空格），标题、列表和图片不缩进。插图按比例缩放为
 完整预览，随窗口调整，最高 28 行，小字形图片保持紧凑。EPUB 内嵌图片
 会异步加载为独立的图片组件；支持 Sixel / Kitty 图形协议的终端（WezTerm、
 iTerm2、Kitty 等）直接绘制高分辨率图片，其余终端降级为真彩色半块字符。
@@ -89,11 +90,15 @@ iTerm2、Kitty 等）直接绘制高分辨率图片，其余终端降级为真�
 | `Ctrl+f` / `Ctrl+b` | 下一页 / 上一页 |
 | `g` / `G` | 章首 / 章末 |
 | `/`、`n`、`N` | 搜索、下一处、上一处 |
-| `t` | 聚焦目录 |
+| `Ctrl+Shift+H` / `Ctrl+Shift+L` | 聚焦目录 / 正文（需要终端传递 CSI-u 修饰键） |
+| `t` / `Tab` / `Ctrl+w` | 聚焦目录 / 聚焦目录 / 切换窗格 |
 | `f` | 全屏正文 |
 | `Ctrl+l` | 重绘当前页面与缓存图片 |
 | `m` | 切换主题 |
 | `q` | 返回；在书架页退出 |
+
+当前阅读章节在目录中始终带 `●` 和粗体下划线，与键盘选择行独立。
+部分终端及 tmux 链路会把 `Ctrl+Shift+H/L` 降为退格 / `Ctrl+l`；此时用 `Ctrl+w`、`Tab`、`t` 切换，`Ctrl+l` 继续重绘。
 
 倍速与男女声只对当前书生效；新书默认 1.0×、男声，切回或重启后恢复。
 有 ffmpeg 时用它保留音调变速；没有时使用 afplay / ffplay / mpv 原生倍速。
@@ -104,12 +109,16 @@ iTerm2、Kitty 等）直接绘制高分辨率图片，其余终端降级为真�
 ```text
 ~/.config/lector/reader.json     URL、token、主题
 ~/.config/lector/progress.json   每本书的位置、倍速、性别与音色
+~/Library/Caches/lector/shelves/ macOS 书架快照
 ~/Library/Caches/lector/images/  macOS 图片缓存
 ~/.cache/lector/images/          Linux 图片缓存
 ```
 
 环境变量 `LECTOR_URL`、`LECTOR_TOKEN`、`LECTOR_THEME` 优先于配置文件。
 网页端和终端端的阅读位置完全独立。
+
+书架先显示本地快照，再后台刷新，不阻塞键盘操作；断网保留上次书架，按 `r` 重试。
+快照按服务器与令牌隔离，单份最多 2 MiB；相同书单刷新保留已有封面组件。
 
 图片按服务器地址、书籍和资源路径生成缓存键，默认最多占用 512 MiB，超过后自动淘汰
 最久未使用的图片。可以用 `LECTOR_CACHE_DIR` 指定其他缓存目录；损坏或超限缓存会
@@ -156,7 +165,7 @@ uv run lector
 uv run pytest -q
 ```
 
-自己构建独立二进制（输出到 `terminal/dist/lector`）：
+自己构建独立二进制（程序为 `terminal/dist/lector/lector`，同目录 `_internal/` 必须一起保留）：
 
 ```bash
 cd terminal

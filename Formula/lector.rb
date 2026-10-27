@@ -14,7 +14,10 @@ class Lector < Formula
   end
 
   def install
-    bin.install "lector"
+    # Homebrew stages inside the archive's sole top-level directory.
+    # Keep the bootloader and its private _internal runtime together.
+    libexec.install Dir["*"]
+    bin.install_symlink libexec/"lector"
   end
 
   test do

@@ -145,33 +145,39 @@ class LectorApp(ImageApp):
 
     #toc-pane {
         width: 30;
+        max-width: 40%;
         height: 1fr;
         border-right: solid $panel;
         overflow-y: auto;
     }
 
-    /* 正文不必铺满整屏：默认只占中间一页，f 键切到全屏。 */
+    #toc-pane > .toc-current Static {
+        text-style: bold underline;
+    }
+
+    /* 扣除目录后居中；f 键填满右侧正文区。 */
     #text-area {
         width: 1fr;
         height: 1fr;
-        align: left middle;
+        align: center middle;
     }
 
     #text-pane {
         width: 92%;
         max-width: 96;
-        margin-left: 1;
-        height: auto;
+        height: 100%;
         max-height: 34;
         overflow-y: auto;
-        padding: 0 2;
+        /* 右侧固定两列滚动条槽 + 一列留白，与左侧三列对称。 */
+        scrollbar-gutter: stable;
+        scrollbar-size-vertical: 2;
+        padding: 0 1 0 3;
         border-top: solid $panel;
         border-bottom: solid $panel;
     }
 
     Screen.fullscreen #text-pane {
         width: 100%;
-        margin-left: 0;
         max-width: 100%;
         max-height: 100%;
         border-top: none;
@@ -425,7 +431,7 @@ def main(argv: list[str] | None = None) -> None:
     LectorApp(
         base_url=args.url,
         token=args.token,
-        theme=resolve_theme(preference, probe=True),
+        theme=resolve_theme(preference, colors=colors),
         theme_preference=preference,
         terminal_colors=colors,
     ).run()

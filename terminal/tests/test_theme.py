@@ -23,6 +23,20 @@ def test_explicit_background_override_wins(monkeypatch):
     assert theme.terminal_background_tone(probe=False) == "light"
 
 
+def test_rgb_snapshot_reuses_background_without_another_terminal_query(monkeypatch):
+    monkeypatch.delenv("LECTOR_THEME_BACKGROUND", raising=False)
+    monkeypatch.setenv("COLORFGBG", "15;0")
+
+    def unexpected_query(*args, **kwargs):
+        raise AssertionError("background already read in the colour snapshot")
+
+    monkeypatch.setattr(theme, "_query_osc11_background", unexpected_query)
+    assert theme.resolve_theme("auto", probe=True, colors={"background": "#ffffff"}) == "ansi-light"
+    monkeypatch.setenv("LECTOR_THEME_BACKGROUND", "dark")
+    assert theme.resolve_theme("auto", colors={"background": "#ffffff"}) == "ansi-dark"
+    assert theme.resolve_theme("dracula", colors={"background": "#ffffff"}) == "dracula"
+
+
 def test_osc11_rgb_is_turned_into_a_tone(monkeypatch):
     monkeypatch.delenv("LECTOR_THEME_BACKGROUND", raising=False)
     monkeypatch.setenv("TERM", "xterm-256color")

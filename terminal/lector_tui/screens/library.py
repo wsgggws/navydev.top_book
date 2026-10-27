@@ -20,6 +20,7 @@ from lector_tui.config import ProgressStore
 from lector_tui.images import placeholder_cover
 from lector_tui.image_data import decode_image
 from lector_tui.widgets import VimListView
+from lector_tui.shelf_cache import ShelfCache, valid_books
 
 from lector_tui.screens.reader import ReaderScreen
 
@@ -58,6 +59,12 @@ class BookItem(ListItem):
         except Exception:  # noqa: BLE001 - a cover must never break the shelf
             return
 
+    def set_percent(self, percent: int) -> None:
+        self.percent = percent
+        self.query_one(".book-meta", Static).update(
+            f"{self.book.get('author') or '未知作者'}\n{self.book.get('language') or ''}  ·  已读 {percent}%"
+        )
+
 
 class LibraryScreen(Screen):
     """The shelf: every book the server knows about."""
@@ -76,6 +83,9 @@ class LibraryScreen(Screen):
     def __init__(self) -> None:
         super().__init__()
         self._books: list[dict] = []
+        self._refresh_generation = 0
+        self._snapshot_key = None
+        self._has_snapshot = False
 
     def compose(self) -> ComposeResult:
         with Vertical():
@@ -92,32 +102,93 @@ class LibraryScreen(Screen):
         self.show_server()
         self.refresh_books()
 
-    def show_server(self) -> None:
+    def show_server(self, status: str = "") -> None:
         """Show which server the shelf is talking to."""
-        self.query_one("#shelf-server", Static).update(f"  {self.app.config.describe()}")
+        suffix = f"  · {status}" if status else ""
+        self.query_one("#shelf-server", Static).update(f"  {self.app.config.describe()}{suffix}")
 
     # -- data ------------------------------------------------------------
     def refresh_books(self) -> None:
-        """Reload the shelf from the server."""
-        listing = self.query_one("#library-list", VimListView)
-        listing.clear()
-        try:
-            self._books = self.app.api.list_books()
-        except Exception as exc:  # noqa: BLE001 - the shelf must not crash
-            self.notify(f"无法读取书架：{exc}", title="错误", severity="error")
+        """Paint a local snapshot immediately; update it off the UI thread."""
+        api = self.app.api
+        key = (api.base_url.rstrip("/"), api.token)
+        self._refresh_generation += 1
+        generation = self._refresh_generation
+        snapshot = ShelfCache(*key)
+        if self._snapshot_key != key:
+            self.workers.cancel_group(self, "book-covers")
+            self._snapshot_key = key
+            self._has_snapshot = False
+            self._books = []
+            cached = snapshot.get()
+            if cached is not None:
+                self._render_books(cached)
+            else:
+                listing = self.query_one("#library-list", VimListView)
+                listing.clear()
+                listing.append(ListItem(Static("正在加载书架…")))
+        self.show_server("本地书架 · 正在刷新…" if self._has_snapshot else "正在加载书架…")
+
+        def worker():
+            from textual.worker import get_current_worker
+
+            try:
+                books = api.list_books()
+                if not valid_books(books):
+                    raise ValueError("书架数据格式不正确")
+                if get_current_worker().is_cancelled:
+                    return
+                snapshot.put(books)
+                callback, result = self._books_loaded, books
+            except Exception as exc:  # noqa: BLE001 - preserve a usable offline shelf
+                callback, result = self._books_failed, str(exc)
+            if not get_current_worker().is_cancelled:
+                try:
+                    self.app.call_from_thread(callback, generation, key, result)
+                except Exception:  # noqa: BLE001 - application may have exited
+                    return
+
+        self.run_worker(worker, group="book-list", exclusive=True, thread=True)
+
+    def _books_loaded(self, generation, key, books) -> None:
+        if generation != self._refresh_generation or key != self._snapshot_key:
             return
+        self._render_books(books)
+        self.show_server()
+
+    def _books_failed(self, generation, key, error) -> None:
+        if generation != self._refresh_generation or key != self._snapshot_key:
+            return
+        self.show_server("本地书架 · 刷新失败" if self._has_snapshot else "连接失败 · r 重试 / c 连接设置")
+        if not self._has_snapshot:
+            listing = self.query_one("#library-list", VimListView)
+            listing.clear()
+            listing.append(ListItem(Static("暂时无法读取书架，按 r 重试或 c 配置连接。")))
+        self.notify(f"无法刷新书架：{error}", title="连接", severity="warning")
+
+    def _render_books(self, books: list[dict]) -> None:
+        listing = self.query_one("#library-list", VimListView)
+        progress = ProgressStore.load()
+        if self._has_snapshot and books == self._books:
+            for item in listing.query(BookItem):
+                item.set_percent(int(progress.percent(item.book["book_id"]) * 100))
+            return
+        selected = self._books[listing.index]["book_id"] if listing.index is not None and listing.index < len(self._books) else None
+        self.workers.cancel_group(self, "book-covers")
+        listing.clear()
+        self._books = books
+        self._has_snapshot = True
         if not self._books:
             listing.append(ListItem(Static("（空）")))
             return
         # 进度是这台机器的终端自己记的，跟网页和服务器都无关。
-        progress = ProgressStore.load()
         items: list[BookItem] = []
         for book in self._books:
             percent = int(progress.percent(book["book_id"]) * 100)
             item = BookItem(book, percent)
             listing.append(item)
             items.append(item)
-        listing.index = 0
+        listing.index = next((i for i, book in enumerate(books) if book["book_id"] == selected), 0)
         self.call_after_refresh(self._load_covers, items)
 
     def _load_covers(self, items: list[BookItem]) -> None:

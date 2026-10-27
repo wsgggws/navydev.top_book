@@ -29,6 +29,26 @@ from lector_tui.widgets import ImageScroll, VimListView
 #: How many columns the directory takes.
 TOC_WIDTH = 30
 
+# Display cells only; sentence text and word offsets remain unchanged.
+PARAGRAPH_INDENT = " " * 4
+
+
+class TocEntry(ListItem):
+    """A reading marker independent of ListView's movable keyboard highlight."""
+
+    def __init__(self, node: dict, depth: int) -> None:
+        self.chapter_id = node.get("chapter_id")
+        self.title = "  " * min(depth, 3) + node.get("title", "")
+        self.label = Static("  " + self.title, markup=False)
+        super().__init__(self.label)
+
+    def mark_reading(self, chapter_id: str | None) -> None:
+        reading = chapter_id is not None and self.chapter_id == chapter_id
+        if reading == self.has_class("toc-current"):
+            return
+        self.set_class(reading, "toc-current")
+        self.label.update(("● " if reading else "  ") + self.title)
+
 
 def flatten_toc(nodes: list[dict], depth: int = 0) -> list[tuple[dict, int]]:
     """The navigation tree as a flat list, keeping the depth."""
@@ -96,6 +116,8 @@ class ChapterBlock(Static):
         read_style = self._style("word-read")
         now_style = self._style("word-now")
         for block in self.blocks:
+            if block.get("type", "p") == "p" and block.get("sentences"):
+                text.append(PARAGRAPH_INDENT)
             if block.get("type") == "li":
                 for sentence in block.get("sentences", []):
                     text.append("  • ", style=Style(dim=True))
@@ -327,6 +349,9 @@ class BaseReaderScreen(Screen):
         Binding("tab", "focus_toc", "目录"),
         Binding("t", "focus_toc", "目录"),
         Binding("ctrl+w", "switch_pane", "切换窗格"),
+        # CSI-u preserves Shift; legacy Ctrl+L must remain image redraw.
+        Binding("ctrl+shift+l,ctrl+shift+L", "focus_text", "正文", priority=True, show=False),
+        Binding("ctrl+shift+h,ctrl+shift+H", "focus_toc", "目录", priority=True, show=False),
         Binding("q", "back", "返回"),
     ]
 
@@ -338,6 +363,7 @@ class BaseReaderScreen(Screen):
         self.chapter_ids: list[str] = []
         self.toc: list[dict] = []
         self.toc_flat: list[tuple[dict, int]] = []
+        self._toc_entries: list[TocEntry] = []
         self.sentences: list[dict] = []
         self.sentence_index = 0
         self.cursor: dict | None = None
@@ -407,10 +433,17 @@ class BaseReaderScreen(Screen):
     def render_toc(self) -> None:
         listing = self.query_one("#toc-pane", VimListView)
         listing.clear()
-        for node, depth in self.toc_flat:
-            title = node.get("title", "")
-            marker = "  " * min(depth, 3)
-            listing.append(ListItem(Static(f"{marker}{title}", markup=False)))
+        self._toc_entries = [TocEntry(node, depth) for node, depth in self.toc_flat]
+        self.sync_reading_chapter()
+        listing.extend(self._toc_entries)
+
+    def sync_reading_chapter(self) -> None:
+        """Update existing rows without moving the keyboard selection."""
+        if self._pane_mode != "toc":
+            return
+        chapter_id = (self.chapter or {}).get("chapter_id")
+        for entry in self._toc_entries:
+            entry.mark_reading(chapter_id)
 
     def load_chapter(self, chapter_id: str, sentence_id: str | None = None) -> None:
         """Load a chapter and put the cursor where it belongs."""
@@ -420,6 +453,7 @@ class BaseReaderScreen(Screen):
             self.notify(f"无法加载章节：{exc}", title="错误", severity="error")
             return
         self.chapter = payload["chapter"]
+        self.sync_reading_chapter()
         self.sentences = [
             sentence for block in self.chapter.get("blocks", []) for sentence in block.get("sentences", [])
         ]
@@ -628,6 +662,9 @@ class BaseReaderScreen(Screen):
 
     def action_focus_toc(self) -> None:
         self.query_one("#toc-pane", VimListView).focus()
+
+    def action_focus_text(self) -> None:
+        self.query_one("#text-pane", VerticalScroll).focus()
 
     def toggle_fullscreen(self) -> None:
         """Show the text in the whole screen, or shrink it back to one page."""

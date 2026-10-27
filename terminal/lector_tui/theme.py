@@ -16,12 +16,21 @@ import time
 _OSC11 = re.compile(rb"\x1b]11;rgba?:([0-9a-fA-F]{1,4})/([0-9a-fA-F]{1,4})/([0-9a-fA-F]{1,4})")
 
 
-def resolve_theme(preference: str = "auto", *, probe: bool = False) -> str:
+def resolve_theme(
+    preference: str = "auto", *, probe: bool = False, colors: dict[str, str] | None = None
+) -> str:
     """Resolve ``auto`` to the ANSI theme matching the terminal background."""
     preference = (preference or "auto").strip()
     if preference != "auto":
         return preference
-    tone = terminal_background_tone(probe=probe)
+    override = os.environ.get("LECTOR_THEME_BACKGROUND", "").strip().lower()
+    background = (colors or {}).get("background", "")
+    if override in {"light", "dark"}:
+        tone = override
+    elif re.fullmatch(r"#[0-9a-fA-F]{6}", background):
+        tone = "light" if _is_light(*(int(background[i:i + 2], 16) for i in (1, 3, 5))) else "dark"
+    else:
+        tone = terminal_background_tone(probe=probe)
     return "ansi-light" if tone == "light" else "ansi-dark"
 
 

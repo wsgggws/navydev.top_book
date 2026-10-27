@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Build a standalone lector executable with PyInstaller.
 #
-# The result is a single file that carries its own Python, so users do not
-# need any Python installation to run the terminal client.
+# The self-contained directory carries its own Python. It is expanded once
+# during installation, avoiding one-file extraction on every launch.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -34,7 +34,7 @@ mkdir -p "${OUT_DIR}"
   --workpath "${WORK_DIR}/build" \
   "${ROOT}/packaging/lector.spec"
 
-BINARY="${OUT_DIR}/lector"
+BINARY="${OUT_DIR}/lector/lector"
 if [ "$(uname -s)" = "Darwin" ]; then
   # Ad-hoc signature: keeps Gatekeeper from refusing the unsigned binary.
   codesign --force --sign - "${BINARY}"

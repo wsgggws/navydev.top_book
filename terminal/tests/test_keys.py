@@ -6,6 +6,8 @@ import asyncio
 import subprocess
 import sys
 
+import pytest
+
 
 def test_vim_navigation_and_play_keys_are_registered():
     from lector_tui.screens.library import LibraryScreen
@@ -34,7 +36,7 @@ def test_builtin_theme_names_are_accepted():
     app.audio.cleanup()
 
 
-def test_reader_highlight_avoids_background_colours_and_keeps_a_wider_left_aligned_page():
+def test_reader_highlight_avoids_background_colours_and_keeps_a_wider_page():
     from lector_tui.app import LectorApp
 
     css = LectorApp.CSS
@@ -44,6 +46,72 @@ def test_reader_highlight_avoids_background_colours_and_keeps_a_wider_left_align
     assert "max-width: 96;" in css
     assert "background: $accent 35%" not in css
     assert "background: $accent 55%" not in css
+
+
+@pytest.mark.parametrize("screen_name", ["ReaderScreen", "ListenScreen"])
+def test_raw_extended_focus_keys_and_existing_pane_keys(monkeypatch, tmp_path, screen_name):
+    """Feed real protocol bytes through Textual, then dispatch the parsed events."""
+    from textual._xterm_parser import XTermParser
+    from lector_tui.api import ApiClient
+    from lector_tui.app import LectorApp
+    from lector_tui.screens import reader
+
+    monkeypatch.setenv("LECTOR_PROGRESS_FILE", str(tmp_path / "progress.json"))
+    monkeypatch.setattr(ApiClient, "list_books", lambda self: [])
+    monkeypatch.setattr(reader.BaseReaderScreen, "load_book", lambda self: None)
+    monkeypatch.setattr(reader.ListenScreen, "start_playback", lambda self: None)
+
+    async def scenario():
+        app = LectorApp(theme="night")
+        async with app.run_test() as pilot:
+            screen = getattr(reader, screen_name)("keys-book")
+            await app.push_screen(screen)
+            await pilot.pause()
+
+            async def send(sequence):
+                events = list(XTermParser().feed(sequence))
+                assert len(events) == 1
+                app.post_message(events[0])
+                await pilot.pause()
+
+            for left, right in [(104, 108), (72, 76)]:
+                await send(f"\x1b[{left};6u")
+                assert app.focused.id == "toc-pane"
+                await send(f"\x1b[{right};6u")
+                assert app.focused.id == "text-pane"
+            await pilot.press("tab")
+            assert app.focused.id == "toc-pane"
+            await pilot.press("ctrl+w")
+            assert app.focused.id == "text-pane"
+            await pilot.press("t")
+            assert app.focused.id == "toc-pane"
+            redrawn = []
+            monkeypatch.setattr(app, "action_refresh_images", lambda: redrawn.append(True))
+            await pilot.press("ctrl+l")
+            assert redrawn == [True]
+            assert app.focused.id == "toc-pane"
+            await pilot.press("slash")
+            assert app.focused.id == "search-input"
+            field = app.focused
+            field.value = "abc"
+            field.cursor_position = 3
+            await send("\x08")
+            assert field.value == "ab"
+            assert app.focused is field
+            await send("\x1b[108;6u")
+            assert app.focused.id == "text-pane"
+
+    asyncio.run(scenario())
+
+
+def test_legacy_and_modify_other_keys_cannot_supply_shift_focus_bindings():
+    from textual._xterm_parser import XTermParser
+
+    # Legacy Ctrl+Shift+L/H are the very same bytes as Ctrl+L / Backspace.
+    for sequence, key in [("\x0c", "ctrl+l"), ("\x08", "backspace"),
+                          ("\x1b[27;6;108~", "ctrl+l"), ("\x1b[27;6;104~", "ctrl+h")]:
+        events = list(XTermParser().feed(sequence))
+        assert [event.key for event in events] == [key]
 
 
 def test_q_quits_from_the_bookshelf(monkeypatch):
