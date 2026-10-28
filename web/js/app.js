@@ -7,7 +7,7 @@ import { LibraryView } from './views/library.js';
 import { ReaderView } from './views/reader.js';
 import { TocDrawer } from './views/toc.js';
 import {
-  chapterTimeMetrics, clamp, debounce, el, formatTime, isTypingTarget,
+  chapterSections, chapterTimeMetrics, clamp, debounce, el, formatTime, isTypingTarget,
 } from './util.js';
 
 const $ = (selector) => document.querySelector(selector);
@@ -283,7 +283,7 @@ dom.btnMenu.addEventListener('click', () => {
 dom.btnBack.addEventListener('click', () => showLibrary());
 
 function cycleTheme() {
-  const order = ['paper', 'sepia', 'night', 'qingshan'];
+  const order = ['paper', 'sepia', 'night', 'qingshan', 'huangpao'];
   const index = order.indexOf(state.settings.theme);
   const next = index < 0 ? 0 : (index + 1) % order.length;
   state.settings.themeTouched = true;
@@ -354,6 +354,8 @@ function showLibrary({ fromRoute = false, replace = false } = {}) {
   dom.topbarChapter.textContent = '';
   dom.player.hidden = true;
   player.release();
+  chapterRequest += 1;
+  refreshTimeline.cancel();
   library.refresh();
   if (!fromRoute || replace) updateUrl(null, null, { replace });
 }
@@ -484,32 +486,64 @@ async function loadToc() {
   }
 }
 
+let readingSections = [];
+let sectionBySentence = new Map();
+let chapterRequest = 0;
+
 async function loadChapter(chapterId, sentenceId = null) {
+  const request = ++chapterRequest;
+  const bookId = state.book.book_id;
+  player.release();
+  refreshTimeline.cancel();
   try {
-    const payload = await api.getChapter(state.book.book_id, chapterId);
+    const payload = await api.getChapter(bookId, chapterId);
+    if (request !== chapterRequest || bookId !== state.book?.book_id) return false;
     state.chapter = payload.chapter;
+    state.timeline = [];
     dom.topbarChapter.textContent = payload.chapter.title;
     dom.playerChapter.textContent = payload.chapter.title;
     reader.render(payload.chapter);
-    if (sentenceId) {
-      requestAnimationFrame(() => reader.jumpTo(sentenceId, { smooth: false }));
+    readingSections = chapterSections(payload.chapter, state.toc).map((section) => ({
+      ...section,
+      sentences: payload.chapter.blocks.slice(section.start, section.end)
+        .flatMap((block) => block.sentences || [])
+        .filter((sentence) => reader.elementFor(sentence.id)),
+    }));
+    sectionBySentence = new Map(readingSections.flatMap((section) =>
+      section.sentences.map((sentence) => [sentence.id, section])));
+    const target = reader.elementFor(sentenceId) ? sentenceId : reader.firstSentenceId();
+    if (target) {
+      moveCursor(target);
+      requestAnimationFrame(() => {
+        if (request === chapterRequest) reader.jumpTo(target, { smooth: false });
+      });
     }
-    updateUrl(state.book.book_id, chapterId, { replace: true });
+    updateUrl(bookId, chapterId, { replace: true });
     await loadTimeline(chapterId);
+    if (request !== chapterRequest || bookId !== state.book?.book_id) return false;
     warmAhead(chapterId);
     updateReadingProgress();
+    return true;
   } catch (error) {
-    toast(error.message || '章节加载失败');
+    if (request === chapterRequest && bookId === state.book?.book_id) {
+      toast(error.message || '章节加载失败');
+    }
+    return false;
   }
 }
 
 async function loadTimeline(chapterId) {
+  const bookId = state.book?.book_id;
+  const chapter = state.chapter;
   try {
-    const payload = await api.getTimeline(state.book.book_id, chapterId);
+    const payload = await api.getTimeline(bookId, chapterId);
+    if (state.book?.book_id !== bookId || state.chapter !== chapter) return;
     state.timeline = payload.sentences || [];
     updatePlayerTime();
   } catch (error) {
+    if (state.book?.book_id !== bookId || state.chapter !== chapter) return;
     state.timeline = [];
+    updatePlayerTime();
   }
 }
 
@@ -539,11 +573,12 @@ function rememberPosition(cursor) {
 
 function updateReadingProgress() {
   if (!state.book || !state.chapter) return;
-  const sentenceById = new Map(state.sentences().map((sentence) => [sentence.id, sentence]));
-  const sentences = reader.order
-    .map((sentenceId) => sentenceById.get(sentenceId))
-    .filter(Boolean);
   const currentId = state.cursor ? state.cursor.sentence_id : null;
+  const section = sectionBySentence.get(currentId) || readingSections[0];
+  if (!section) return;
+  dom.topbarChapter.textContent = section.title;
+  dom.playerChapter.textContent = section.title;
+  const sentences = section.sentences;
   const metrics = chapterTimeMetrics(sentences, state.timeline, {
     currentId,
     playerSentenceId: player.sentenceId,
@@ -624,6 +659,9 @@ async function onNavigate(node) {
   closeDrawers();
   const chapterId = node.chapter_id;
   if (!chapterId) return;
+  chapterRequest += 1;
+  player.release();
+  refreshTimeline.cancel();
   if (node.sentence_id) {
     // A search hit: jump straight to the sentence.
     if (chapterId !== (state.chapter && state.chapter.chapter_id)) {
@@ -644,10 +682,13 @@ async function onNavigate(node) {
       }
     }
     const first = reader.firstSentenceId();
-    if (first) reader.jumpTo(first);
+    if (first) {
+      moveCursor(first);
+      reader.jumpTo(first);
+    }
     return;
   }
-  await loadChapter(chapterId);
+  if (!await loadChapter(chapterId)) return;
   if (node.anchor && state.chapter) {
     const sentenceId = reader.sentenceForAnchor(state.chapter, node.anchor);
     if (sentenceId) {
@@ -667,11 +708,22 @@ async function gotoChapter(offset) {
   // Switch to the neighbouring chapter and put the cursor at its start.
   // Returns true when there was a chapter to switch to.
   if (!state.chapter) return false;
+  const sections = readingSections.filter((section) => section.sentences.length);
+  const current = sectionBySentence.get(state.cursor?.sentence_id) || sections[0];
+  const neighbour = sections[sections.indexOf(current) + offset];
+  if (neighbour) {
+    chapterRequest += 1;
+    player.release();
+    const first = neighbour.sentences[0].id;
+    moveCursor(first);
+    reader.jumpTo(first, { smooth: false });
+    return true;
+  }
   const chapters = await chapterIds();
   const index = chapters.indexOf(state.chapter.chapter_id);
   const next = chapters[index + offset];
   if (!next) return false;
-  await loadChapter(next);
+  if (!await loadChapter(next)) return false;
   const first = reader.firstSentenceId();
   if (first) {
     moveCursor(first);
@@ -1081,10 +1133,8 @@ async function loadVoices() {
     // 中文书只给中文的声音，英文书只给英文的。
     let shown = voicesFor(state.book ? state.book.language : '');
     const gender = state.settings.voiceGender;
-    if (gender && gender !== 'any') {
-      const byGender = shown.filter((voice) => voice.gender === gender);
-      // 常用音色里没有这个性别时，宁可给全部，也不给空列表。
-      if (byGender.length) shown = byGender;
+    if (gender) {
+      shown = shown.filter((voice) => voice.gender === gender);
     }
     settings.voice.replaceChildren();
     for (const voice of shown) {
@@ -1123,7 +1173,7 @@ async function loadVoices() {
  * (a male voice); the client only falls back when the server has no opinion.
  */
 function matchVoice(language, gender) {
-  const wanted = gender && gender !== 'any' ? gender : null;
+  const wanted = gender === 'female' ? 'female' : 'male';
   // 只在这本书的语言范围里挑。
   const pool = voicesFor(language);
   const fits = (voice) => !wanted || voice.gender === wanted;
@@ -1146,8 +1196,7 @@ function matchVoice(language, gender) {
   const loose = pool.find(fits);
   if (loose) return loose.voice_id;
 
-  const anywhere = state.voices.find(fits);
-  return anywhere ? anywhere.voice_id : '';
+  return '';
 }
 
 async function handleShareCode() {

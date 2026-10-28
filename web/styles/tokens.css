@@ -1,6 +1,6 @@
 /* Design tokens.
  *
- * The four themes only swap colours; spacing, type scale and motion are
+ * The five themes only swap colours; spacing, type scale and motion are
  * shared so that switching a theme never changes the rhythm of the page.
  */
 
@@ -106,6 +106,22 @@
   --spoken: #293F30;
   --highlight: #41634A;
   --shadow: 0 1px 2px rgba(24, 42, 34, .3), 0 8px 24px rgba(24, 42, 34, .4);
+}
+
+/* 黄袍：HuangPao.nvim 的暖金纸底与墨色正文。 */
+[data-theme="huangpao"] {
+  color-scheme: light;
+  --bg: #cdb06a;
+  --surface: #d4b976;
+  --text: #252219;
+  --text-dim: #342f23;
+  --text-faint: #615a43;
+  --border: #987d48;
+  --accent: #563e0a;
+  --accent-soft: rgba(86, 62, 10, .12);
+  --spoken: #c5a75f;
+  --highlight: #b59852;
+  --shadow: 0 1px 2px rgba(52, 47, 35, .08), 0 8px 24px rgba(52, 47, 35, .12);
 }
 
 /* 跟随系统：只在用户没有明确选择时生效 */

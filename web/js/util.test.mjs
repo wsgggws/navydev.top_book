@@ -51,3 +51,28 @@ test('chapterTimeMetrics starts at zero before a current sentence exists', () =>
   assert.equal(metrics.elapsed, 0);
   assert.ok(metrics.total > 0);
 });
+
+test('stale cursor from another chapter does not mark the new chapter fully read', () => {
+  const metrics = util.chapterTimeMetrics([{ id: 'c2.b0.s0', text: '新章节。' }], [], { currentId: 'c1.b0.s0' });
+  assert.equal(metrics.elapsed, 0);
+  assert.ok(metrics.total > 0);
+});
+
+test('chapterSections honours nested TOC anchors and preserves preface and trailing sections', () => {
+  const chapter = { chapter_id: 'c4', title: '出版说明', blocks: [
+    { id: 'c4.b0', sentences: [] },
+    { id: 'c4.b1', anchor: 'one', sentences: [] },
+    { id: 'c4.b2', anchors: ['two'], sentences: [] },
+    { id: 'c4.b3', sentences: [] },
+  ] };
+  const sections = util.chapterSections(chapter, [{ chapter_id: 'c4', title: '出版说明', children: [
+    { chapter_id: 'c4', title: '第一回', anchor: 'one' },
+    { chapter_id: 'c4', title: '失效链接', anchor: 'missing' },
+    { chapter_id: 'c4', title: '第二回', anchor: 'two' },
+  ] }]);
+  assert.deepEqual(sections, [
+    { title: '出版说明', start: 0, end: 1 },
+    { title: '第一回', start: 1, end: 2 },
+    { title: '第二回', start: 2, end: 4 },
+  ]);
+});

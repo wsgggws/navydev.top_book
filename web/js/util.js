@@ -91,7 +91,7 @@ export function chapterTimeMetrics(
   );
   let elapsed = 0;
   let total = 0;
-  let foundCurrent = !currentId;
+  let foundCurrent = !currentId || !sentences.some((sentence) => sentence.id === currentId);
   for (const sentence of sentences) {
     const duration = measured.has(sentence.id)
       ? measured.get(sentence.id)
@@ -184,4 +184,30 @@ export function isTypingTarget(target) {
   if (!target) return false;
   const tag = target.tagName;
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+}
+
+/** EPUB 文件可能含多个目录章节；边界来自目录锚点，不改变持久化的句子 ID。 */
+export function chapterSections(chapter, toc) {
+  const blocks = chapter.blocks || [];
+  const anchors = new Map();
+  blocks.forEach((block, index) => {
+    for (const anchor of [block.anchor, ...(block.anchors || [])]) {
+      if (anchor && !anchors.has(anchor)) anchors.set(anchor, index);
+    }
+  });
+  const starts = new Map([[0, chapter.title]]);
+  const visit = (nodes) => {
+    for (const node of nodes || []) {
+      if (node.chapter_id === chapter.chapter_id) {
+        const start = node.anchor ? anchors.get(node.anchor) : 0;
+        if (start !== undefined) starts.set(start, node.title || chapter.title);
+      }
+      visit(node.children);
+    }
+  };
+  visit(toc);
+  const positions = [...starts.keys()].sort((a, b) => a - b);
+  return positions.map((start, index) => ({
+    title: starts.get(start), start, end: positions[index + 1] ?? blocks.length,
+  }));
 }

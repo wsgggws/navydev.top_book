@@ -397,6 +397,8 @@ test('QingShan theme persists across shelf, reader and reload and participates i
     await page.locator('#btn-back').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'qingshan');
     await page.locator('#btn-theme').click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'huangpao');
+    await page.locator('#btn-theme').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'paper');
     await page.locator('#btn-theme').click();
     await page.locator('#btn-theme').click();
@@ -404,4 +406,109 @@ test('QingShan theme persists across shelf, reader and reload and participates i
     await page.keyboard.press('m');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'qingshan');
   }
+});
+
+test('TOC sections sharing one EPUB file show the selected title and section time', async t => {
+  const page = await openPage(t);
+  const titles = ['出版说明', '第一回', '第二回'];
+  const sections = {
+    ...chapter, title: titles[0],
+    blocks: titles.flatMap((title, index) => [
+      { type: 'h1', id: `c0.b${index * 2}`, anchor: index ? `section-${index}` : null, anchors: index ? [`section-${index}`] : [],
+        sentences: [{ id: `c0.b${index * 2}.s0`, text: title }] },
+      { type: 'p', id: `c0.b${index * 2 + 1}`,
+        sentences: [{ id: `c0.b${index * 2 + 1}.s0`, text: `${title}的正文。` }] },
+    ]),
+  };
+  await page.route('**/books/test-book/toc', route => route.fulfill({ json: {
+    toc: titles.map((title, index) => ({ id: `t${index}`, title, chapter_id: 'c0',
+      anchor: index ? `section-${index}` : null, children: [] })),
+  } }));
+  await page.route('**/books/test-book/chapters/c0', route => route.fulfill({ json: { chapter: sections } }));
+  await page.route('**/chapters/c0/timeline', route => route.fulfill({ json: {
+    sentences: sections.blocks.map((block, index) => ({ sentence_id: block.sentences[0].id,
+      start: index * 10, end: index * 10 + 10 })),
+  } }));
+  await page.locator('.card').click();
+  await expect(page.locator('.sent')).toHaveCount(5);
+  await page.locator('#btn-menu').click();
+  await page.getByRole('button', { name: '第一回', exact: true }).click();
+  await expect(page.locator('#player-chapter')).toHaveText('第一回');
+  await expect(page.locator('#player-time')).toHaveText('00:00 / 00:20');
+  await page.locator('#btn-menu').click();
+  await page.getByRole('button', { name: '第二回', exact: true }).click();
+  await expect(page.locator('#player-chapter')).toHaveText('第二回');
+  await expect(page.locator('#player-time')).toHaveText('00:00 / 00:20');
+  await page.reload();
+  await expect(page.locator('#player-chapter')).toHaveText('第二回');
+  await expect(page.locator('#player-time')).toHaveText('00:00 / 00:20');
+  await page.keyboard.press('[');
+  await expect(page.locator('#player-chapter')).toHaveText('第一回');
+  await expect(page.locator('#player-time')).toHaveText('00:00 / 00:20');
+  await page.keyboard.press('[');
+  await expect(page.locator('#player-chapter')).toHaveText('出版说明');
+  await expect(page.locator('#player-time')).toHaveText('00:00 / 00:10');
+});
+
+test('new chapter selection stops old audio and stale requests cannot overwrite it', async t => {
+  const page = await openPage(t);
+  let releaseOld;
+  const oldResponse = new Promise(resolve => { releaseOld = resolve; });
+  t.after(releaseOld);
+  const makeChapter = (id, title) => ({ ...chapter, chapter_id: id, title,
+    blocks: [{ id: `${id}.b0`, type: 'p', sentences: [{ id: `${id}.b0.s0`, text: title }] }],
+  });
+  await page.route('**/books/test-book/toc', route => route.fulfill({ json: { toc: [
+    { id: 't0', title: chapter.title, chapter_id: 'c0', children: [] },
+    { id: 't1', title: '慢章节', chapter_id: 'c1', children: [] },
+    { id: 't2', title: '最新章节', chapter_id: 'c2', children: [] },
+  ] } }));
+  await page.route('**/chapters/c0', route => route.fulfill({ json: { chapter: { ...chapter, sentence_count: 30 } } }));
+  await page.route('**/chapters/c1', async route => {
+    await oldResponse;
+    await route.fulfill({ json: { chapter: makeChapter('c1', '慢章节') } });
+  });
+  await page.route('**/chapters/c2', route => route.fulfill({ json: { chapter: makeChapter('c2', '最新章节') } }));
+  await openBook(page);
+  await page.locator('#btn-play').click();
+  await page.waitForFunction(() => window.lector.player.playing);
+  await page.locator('#btn-menu').click();
+  await page.getByRole('button', { name: '慢章节', exact: true }).click();
+  await page.locator('#btn-menu').click();
+  await page.getByRole('button', { name: '最新章节', exact: true }).click();
+  await expect(page.locator('#player-chapter')).toHaveText('最新章节');
+  const stale = page.waitForResponse(response => response.url().endsWith('/chapters/c1'));
+  releaseOld();
+  await stale;
+  await page.waitForTimeout(100);
+  await expect(page.locator('#player-chapter')).toHaveText('最新章节');
+  assert.equal(await page.evaluate(() => window.lector.player.playing), false);
+  await expect(page).toHaveURL(/\/test-book\/c2$/);
+});
+
+test('HuangPao theme persists and gender only offers male and female, migrating old any preferences', async t => {
+  const page = await openPage(t, 375);
+  await page.evaluate(() => localStorage.setItem('lector.books', JSON.stringify({
+    'test-book': { gender: 'any', voiceId: 'test-female' },
+  })));
+  await page.reload();
+  await openBook(page);
+  await page.locator('#btn-settings').click();
+  assert.deepEqual(await page.locator('#s-gender button').evaluateAll(buttons => buttons.map(button => button.dataset.gender)), ['female', 'male']);
+  await expect(page.locator('#s-gender [data-gender="male"]')).toHaveClass('is-active');
+  await expect(page.locator('#s-voice')).toHaveValue('test-voice');
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('lector.books'))['test-book'].gender), 'male');
+  await page.locator('#s-theme [data-theme="huangpao"]').click();
+  await page.keyboard.press('Escape');
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'huangpao');
+  assert.equal(await page.locator('html').evaluate(el => getComputedStyle(el).getPropertyValue('--bg').trim()), '#cdb06a');
+  await page.locator('#btn-settings').click();
+  await page.locator('#s-gender [data-gender="female"]').click();
+  await expect(page.locator('#s-voice')).toHaveValue('test-female');
+  await page.keyboard.press('Escape');
+  await page.reload();
+  await page.locator('#btn-settings').click();
+  await expect(page.locator('#s-gender [data-gender="female"]')).toHaveClass('is-active');
+  await expect(page.locator('#s-voice')).toHaveValue('test-female');
 });

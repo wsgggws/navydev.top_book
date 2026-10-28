@@ -119,8 +119,9 @@ export const state = new (class Store extends Emitter {
     if (!Number.isFinite(this.settings.rate) || this.settings.rate < 0.75 || this.settings.rate > 2) {
       this.settings.rate = DEFAULT_SETTINGS.rate;
     }
-    if (!['male', 'female', 'any'].includes(this.settings.voiceGender)) {
+    if (!['male', 'female'].includes(this.settings.voiceGender)) {
       this.settings.voiceGender = DEFAULT_SETTINGS.voiceGender;
+      this.setPref(bookId, 'gender', this.settings.voiceGender);
     }
     this.settings.voiceTouched = Boolean(prefs.voiceId);
   }
