@@ -283,7 +283,7 @@ dom.btnMenu.addEventListener('click', () => {
 dom.btnBack.addEventListener('click', () => showLibrary());
 
 function cycleTheme() {
-  const order = ['paper', 'sepia', 'night'];
+  const order = ['paper', 'sepia', 'night', 'qingshan'];
   const index = order.indexOf(state.settings.theme);
   const next = index < 0 ? 0 : (index + 1) % order.length;
   state.settings.themeTouched = true;

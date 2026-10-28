@@ -374,3 +374,34 @@ test('changing gender during playback fetches matching media and word timings in
       `${ext} requested with the selected female voice`);
   }
 });
+
+test('QingShan theme persists across shelf, reader and reload and participates in cycling', async t => {
+  for (const width of [320, 1280]) {
+    const page = await openPage(t, width);
+    await page.locator('#btn-settings').click();
+    const choice = page.locator('#s-theme [data-theme="qingshan"]');
+    await choice.click();
+    await expect(choice).toHaveClass('is-active');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'qingshan');
+    assert.equal(await page.locator('html').evaluate(el => getComputedStyle(el).getPropertyValue('--bg').trim()), '#1D3229');
+    assert.equal(await choice.evaluate(el => {
+      const rect = el.getBoundingClientRect();
+      return rect.left >= 0 && rect.right <= innerWidth;
+    }), true, 'theme choice fits the settings drawer');
+    await page.keyboard.press('Escape');
+    await openBook(page);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'qingshan');
+    await page.reload();
+    await expect(page.locator('.sent')).toHaveCount(30);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'qingshan');
+    await page.locator('#btn-back').click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'qingshan');
+    await page.locator('#btn-theme').click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'paper');
+    await page.locator('#btn-theme').click();
+    await page.locator('#btn-theme').click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'night');
+    await page.keyboard.press('m');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'qingshan');
+  }
+});
