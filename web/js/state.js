@@ -15,7 +15,7 @@ const BOOK_SETTINGS = {
 };
 
 const DEFAULT_SETTINGS = {
-  theme: 'sepia',
+  theme: 'luzhu',
   themeTouched: false,
   fontSize: 20,
   lineHeight: 1.9,

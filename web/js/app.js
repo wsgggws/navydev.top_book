@@ -283,7 +283,7 @@ dom.btnMenu.addEventListener('click', () => {
 dom.btnBack.addEventListener('click', () => showLibrary());
 
 function cycleTheme() {
-  const order = ['paper', 'sepia', 'night', 'qingshan', 'huangpao'];
+  const order = ['luzhu', 'qingshan', 'huangpao', 'paper', 'sepia', 'night'];
   const index = order.indexOf(state.settings.theme);
   const next = index < 0 ? 0 : (index + 1) % order.length;
   state.settings.themeTouched = true;
@@ -350,7 +350,7 @@ function showLibrary({ fromRoute = false, replace = false } = {}) {
   dom.library.hidden = false;
   dom.reader.hidden = true;
   dom.btnBack.hidden = true;
-  dom.topbarBook.textContent = '有声电子书';
+  dom.topbarBook.textContent = "navy's ebook";
   dom.topbarChapter.textContent = '';
   dom.player.hidden = true;
   player.release();

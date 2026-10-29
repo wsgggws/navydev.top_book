@@ -117,6 +117,8 @@ async function assertHitTarget(page, selector) {
 test('browser title stays navy\'s ebook on shelf, reader, reload and back', async t => {
   const page = await openPage(t);
   await expect(page).toHaveTitle("navy's ebook");
+  await expect(page.locator('#topbar-book')).toHaveText("navy's ebook");
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'luzhu');
   await openBook(page);
   await expect(page).toHaveTitle("navy's ebook");
   await page.reload();
@@ -124,6 +126,7 @@ test('browser title stays navy\'s ebook on shelf, reader, reload and back', asyn
   await expect(page).toHaveTitle("navy's ebook");
   await page.locator('#btn-back').click();
   await expect(page.locator('#library')).toBeVisible();
+  await expect(page.locator('#topbar-book')).toHaveText("navy's ebook");
   await expect(page).toHaveTitle("navy's ebook");
 });
 
@@ -375,15 +378,20 @@ test('changing gender during playback fetches matching media and word timings in
   }
 });
 
-test('QingShan theme persists across shelf, reader and reload and participates in cycling', async t => {
+test('LuZhu default and latest QingShan persist across shelf, reader and reload and participate in cycling', async t => {
   for (const width of [320, 1280]) {
     const page = await openPage(t, width);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'luzhu');
+    // 未手动选择过主题的旧用户也使用新默认值。
+    await page.evaluate(() => localStorage.setItem('lector.settings', JSON.stringify({ theme: 'sepia' })));
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'luzhu');
     await page.locator('#btn-settings').click();
     const choice = page.locator('#s-theme [data-theme="qingshan"]');
     await choice.click();
     await expect(choice).toHaveClass('is-active');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'qingshan');
-    assert.equal(await page.locator('html').evaluate(el => getComputedStyle(el).getPropertyValue('--bg').trim()), '#1D3229');
+    assert.equal(await page.locator('html').evaluate(el => getComputedStyle(el).getPropertyValue('--bg').trim()), '#203237');
     assert.equal(await choice.evaluate(el => {
       const rect = el.getBoundingClientRect();
       return rect.left >= 0 && rect.right <= innerWidth;
@@ -403,6 +411,10 @@ test('QingShan theme persists across shelf, reader and reload and participates i
     await page.locator('#btn-theme').click();
     await page.locator('#btn-theme').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'night');
+    await page.keyboard.press('m');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'luzhu');
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'luzhu');
     await page.keyboard.press('m');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'qingshan');
   }

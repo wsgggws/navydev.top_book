@@ -1,6 +1,6 @@
 /* Design tokens.
  *
- * The five themes only swap colours; spacing, type scale and motion are
+ * The six themes only swap colours; spacing, type scale and motion are
  * shared so that switching a theme never changes the rhythm of the page.
  */
 
@@ -92,20 +92,36 @@
   --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .5);
 }
 
-/* 青山：与 QingShan.nvim 的矿物绿、暖灰色板保持一致。 */
-[data-theme="qingshan"] {
+/* 绿珠：LuZhu.nvim 的潭绿底、珠白文字与碧玉强调；默认主题。 */
+[data-theme="luzhu"] {
   color-scheme: dark;
   --bg: #1D3229;
   --surface: #243B2E;
   --text: #DCE8D5;
   --text-dim: #AEC0AB;
-  --text-faint: #ADA594;
+  --text-faint: #A6A5A2;
   --border: #56785D;
   --accent: #89C79B;
   --accent-soft: rgba(137, 199, 155, .14);
   --spoken: #293F30;
   --highlight: #41634A;
   --shadow: 0 1px 2px rgba(24, 42, 34, .3), 0 8px 24px rgba(24, 42, 34, .4);
+}
+
+/* 青山：最新 QingShan.nvim 的山水蓝绿与矿物色。 */
+[data-theme="qingshan"] {
+  color-scheme: dark;
+  --bg: #203237;
+  --surface: #26383E;
+  --text: #DEE7DF;
+  --text-dim: #AFBFBA;
+  --text-faint: #A7A6A3;
+  --border: #56767C;
+  --accent: #96C3A2;
+  --accent-soft: rgba(150, 195, 162, .14);
+  --spoken: #293D42;
+  --highlight: #3C5962;
+  --shadow: 0 1px 2px rgba(26, 41, 45, .3), 0 8px 24px rgba(26, 41, 45, .4);
 }
 
 /* 黄袍：HuangPao.nvim 的暖金纸底与墨色正文。 */
